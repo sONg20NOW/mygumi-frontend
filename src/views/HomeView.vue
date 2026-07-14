@@ -17,17 +17,17 @@
     <section class="category-section">
       <h2>카테고리 바로가기</h2>
       <div class="category-grid">
-        <button @click="navigateToCategory('tour')" class="category-card">
+        <button @click="navigateToCategory('관광지')" class="category-card">
           <span class="icon">🏞️</span>
           <h3>관광지</h3>
           <p>금오산, 벼랑길 등 추천 명소</p>
         </button>
-        <button @click="navigateToCategory('restaurant')" class="category-card">
+        <button @click="navigateToCategory('맛집')" class="category-card">
           <span class="icon">🍕</span>
           <h3>맛집</h3>
           <p>지역 주민 인증 로컬 맛집</p>
         </button>
-        <button @click="navigateToCategory('festival')" class="category-card">
+        <button @click="navigateToCategory('축제·행사')" class="category-card">
           <span class="icon">🎉</span>
           <h3>축제·행사</h3>
           <p>이번 달에 열리는 다양한 축제</p>
@@ -42,7 +42,13 @@
       </div>
       
       <div class="posts-table-wrapper">
-        <table class="posts-table">
+        <div v-if="isLoading" class="loading-state">게시글을 불러오는 중입니다...</div>
+        
+        <div v-else-if="error" class="error-state">{{ error }}</div>
+        
+        <div v-else-if="posts.length === 0" class="empty-state">최근 등록된 게시글이 없습니다.</div>
+
+        <table v-else class="posts-table">
           <thead>
             <tr>
               <th style="width: 15%">카테고리</th>
@@ -52,13 +58,13 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="post in mockPosts" :key="post.id" @click="goToDetail(post.id)">
+            <tr v-for="post in posts" :key="post.id" @click="goToDetail(post.id)">
               <td>
-                <span class="badge" :class="post.categoryKey">{{ post.categoryName }}</span>
+                <span class="badge" :class="getCategoryClass(post.category)">{{ post.category }}</span>
               </td>
               <td class="post-title">{{ post.title }}</td>
               <td class="anonymous-user">익명</td>
-              <td class="date-col">{{ post.createdAt }}</td>
+              <td class="date-col">{{ formatDate(post.createdAt) }}</td>
             </tr>
           </tbody>
         </table>
@@ -68,23 +74,69 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
+import { ref, onMounted } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
-
+import api from '@/api/index.js'; // ⭕ 정의하신 커스텀 api 인스턴스 import (경로는 프로젝트 구조에 맞게 수정)
 const router = useRouter();
 
-// 의뢰서 요구사항에 맞춘 최근 게시글 목데이터 (Mock Data)
-const mockPosts = ref([
-  { id: 5, categoryKey: 'tour', categoryName: '관광지', title: '이번 주말에 금오산 둘레길 다녀왔는데 단풍 장난 아니네요!', createdAt: '07.14' },
-  { id: 4, categoryKey: 'restaurant', categoryName: '맛집', title: '구미역 뒤쪽에 진짜 숨은 뇨끼 맛집 공유합니다.', createdAt: '07.13' },
-  { id: 3, categoryKey: 'festival', categoryName: '축제·행사', title: '경북 지역 야시장 일정 정리본 있으신 분 계신가요?', createdAt: '07.12' },
-  { id: 2, categoryKey: 'tour', categoryName: '관광지', title: '가족들이랑 조용하게 힐링하기 좋은 경북 언택트 코스 추천이요', createdAt: '07.10' },
-  { id: 1, categoryKey: 'restaurant', categoryName: '맛집', title: '익명 게시판이니까 물어보는데 구미 최고 국밥집 어디임?', createdAt: '07.09' }
-]);
+// API로부터 전달받을 실시간 게시글 데이터 상태 관리
+const posts = ref([]);
+const isLoading = ref(true);
+const error = ref(null);
 
-// 카테고리 클릭 시 게시판 목록 뷰로 쿼리 스트링을 들고 이동
-const navigateToCategory = (categoryType) => {
-  router.push({ path: '/board', query: { category: categoryType } });
+// 명세서 규격에 맞게 첫 페이지(`page=1`), 5개 고정(`size=5`)으로 최근 게시글 Fetch
+const fetchRecentPosts = async () => {
+  try {
+    isLoading.ref = true;
+    error.value = null;
+    
+    // API 명세서 1번 스펙 반영: GET /api/posts?page=1&size=5
+    const response = await api.get('/api/posts', {
+      params: {
+        page: 1,
+        size: 5
+      }
+    });
+
+    // 성공 응답 구조 내부의 items 배열을 바인딩
+    if (response.data && response.data.items) {
+      posts.value = response.data.items;
+    }
+  } catch (err) {
+    console.error('게시글 목록 로드 실패:', err);
+    error.value = err.response?.data?.message || '게시글을 불러오는데 실패했습니다.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// 컴포넌트 최초 마운트 시점에 실데이터 바인딩 진행
+onMounted(() => {
+  fetchRecentPosts();
+});
+
+// 명세서 상의 한글 카테고리 문자열(관광지, 맛집 등)을 기존 CSS 클래스 매핑용 키로 변환
+const getCategoryClass = (categoryName) => {
+  switch (categoryName) {
+    case '관광지': return 'tour';
+    case '맛집': return 'restaurant';
+    case '축제·행사': return 'festival';
+    default: return 'default';
+  }
+};
+
+// API의 "2026-07-14T13:30:00" 포맷 날짜 문자열을 기존 레이아웃 규격인 "MM.DD" 형태로 파싱
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${month}.${day}`;
+};
+
+// 카테고리 클릭 시 명세서 규격과 맞춰 한글 카테고리 값을 그대로 쿼리 스트링으로 들고 이동
+const navigateToCategory = (categoryName) => {
+  router.push({ path: '/board', query: { category: categoryName } });
 };
 
 // 상세 페이지 이동
@@ -286,6 +338,17 @@ const goToDetail = (id) => {
   color: #868e96;
 }
 
+/* 데이터 통신 상태 스타일 정의 */
+.loading-state, .error-state, .empty-state {
+  padding: 30px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 14px;
+}
+.error-state {
+  color: #dc3545;
+}
+
 /* 카테고리 배지 디자인 */
 .badge {
   display: inline-block;
@@ -298,4 +361,5 @@ const goToDetail = (id) => {
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.festival { background-color: #f3e5f5; color: #4a148c; }
+.badge.default { background-color: #e2e8f0; color: #475569; }
 </style>
