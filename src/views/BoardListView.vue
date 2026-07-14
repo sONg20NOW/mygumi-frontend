@@ -18,7 +18,7 @@
         <input 
           v-model="searchQuery" 
           type="text" 
-          placeholder="제목, 내용 또는 태그(#태그명)로 검색하세요..." 
+          placeholder="제목과 내용으로 검색하세요..." 
           class="search-input"
           @keyup.enter="handleSearch"
         />
@@ -31,7 +31,11 @@
     </div>
 
     <div class="table-wrapper">
-      <table class="board-table">
+      <div v-if="isLoading" class="loading-state">게시글 목록을 불러오는 중입니다...</div>
+      <div v-else-if="error" class="error-state">{{ error }}</div>
+      <div v-else-if="posts.length === 0" class="empty-state">조회된 게시글이 없습니다.</div>
+
+      <table v-else class="board-table">
         <thead>
           <tr>
             <th class="th-bookmark">북마크</th>
@@ -44,239 +48,342 @@
           </tr>
         </thead>
         <tbody>
-          <tr 
-            v-for="post in filteredPosts" 
-            :key="post.id" 
-            @click="goToDetail(post.id)"
-            class="post-row"
-          >
+          <tr v-for="post in posts" :key="post.id">
             <td class="td-bookmark" @click.stop="toggleBookmark(post.id)">
-              <span class="star-icon" :class="{ bookmarked: bookmarkedIds.includes(post.id) }">
-                {{ bookmarkedIds.includes(post.id) ? '★' : '☆' }}
-              </span>
+              <span :class="['star-icon', { bookmarked: isBookmarked(post.id) }]">★</span>
             </td>
             <td class="td-num">{{ post.id }}</td>
-            <td>
-              <span class="badge" :class="post.categoryKey">{{ post.categoryName }}</span>
+            <td class="td-cat">
+              <span class="badge" :class="getCategoryClass(post.category)">{{ post.category }}</span>
             </td>
-            <td class="td-title">
+            <td class="td-title" @click="goToDetail(post.id)">
               <div class="title-container">
-                <span v-if="post.imageUrl" class="image-clip-icon">🖼️</span>
+                <span v-if="post.thumbnailUrl" class="image-clip-icon">🖼️</span>
                 <span class="title-text">{{ post.title }}</span>
-                <div class="tag-list-inline">
+                <div v-if="post.tags && post.tags.length" class="tag-list-inline">
                   <span v-for="tag in post.tags" :key="tag" class="inline-tag">#{{ tag }}</span>
                 </div>
               </div>
             </td>
-            <td class="td-views">👁️ {{ post.views }}</td>
-            <td class="td-likes">❤️ {{ post.likes }}</td>
-            <td class="td-date">{{ post.createdAt }}</td>
-          </tr>
-          <tr v-if="filteredPosts.length === 0">
-            <td colspan="7" class="no-data">등록된 게시글이 없습니다.</td>
+            <td class="td-views">{{ post.viewCount }}</td>
+            <td class="td-likes">❤️ {{ post.likeCount }}</td>
+            <td class="td-date">{{ formatDate(post.createdAt) }}</td>
           </tr>
         </tbody>
       </table>
     </div>
 
-    <div class="pagination">
-      <button class="page-btn" disabled>&lt;</button>
-      <button class="page-btn active">1</button>
-      <button class="page-btn" disabled>&gt;</button>
+    <div v-if="totalPages > 0" class="pagination">
+      <button 
+        class="page-btn prev" 
+        :disabled="currentPage === 1" 
+        @click="changePage(currentPage - 1)"
+      >
+        &lt; 이전
+      </button>
+      
+      <button 
+        v-for="page in totalPages" 
+        :key="page"
+        :class="['page-btn', { active: currentPage === page }]"
+        @click="changePage(page)"
+      >
+        {{ page }}
+      </button>
+      
+      <button 
+        class="page-btn next" 
+        :disabled="currentPage === totalPages" 
+        @click="changePage(currentPage + 1)"
+      >
+        다음 &gt;
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
+import api from '@/api/index.js'; // ⭕ axios 대신 공통 api 인스턴스 사용
 
 const router = useRouter();
 const route = useRoute();
 
-const searchQuery = ref('');
-const selectedCategory = ref('all');
-
-// 개인별 브라우저 저장소(localStorage) 기반 북마크 리스트 관리
-const bookmarkedIds = ref([]);
-
+// 카테고리 설정 정의 (명세서 1번의 한글 카테고리 기준 매핑)
 const categories = [
-  { label: '전체보기', value: 'all' },
-  { label: '관광지', value: 'tour' },
-  { label: '맛집', value: 'restaurant' },
-  { label: '축제·행사', value: 'festival' }
+  { label: '전체', value: 'ALL' },
+  { label: '관광지', value: '관광지' },
+  { label: '맛집', value: '맛집' },
+  { label: '축제·행사', value: '축제·행사' }
 ];
 
-const mockPosts = ref([
-  { id: 7, categoryKey: 'tour', categoryName: '관광지', title: '구미 금오산 잔도길 유모차 진입 질문', views: 42, likes: 5, tags: ['금오산', '유모차', '잔도길'], imageUrl: '', createdAt: '07.14' },
-  { id: 6, categoryKey: 'festival', categoryName: '축제·행사', title: '2026 경북 여름 축제 일정 총정리 캘린더', views: 128, likes: 24, tags: ['축제', '경북', '캘린더'], imageUrl: 'https://picsum.photos/100/100', createdAt: '07.14' },
-  { id: 5, categoryKey: 'tour', categoryName: '관광지', title: '이번 주말에 금오산 둘레길 다녀왔는데 단풍 장난 아니네요!', views: 95, likes: 18, tags: ['금오산', '단풍', '나들이'], imageUrl: 'https://picsum.photos/100/100', createdAt: '07.14' },
-  { id: 4, categoryKey: 'restaurant', categoryName: '맛집', title: '구미역 뒤쪽에 진짜 숨은 뇨끼 맛집 공유합니다.', views: 210, likes: 32, tags: ['금리단길', '뇨끼', '맛집'], imageUrl: '', createdAt: '07.13' },
-  { id: 3, categoryKey: 'festival', categoryName: '축제·행사', title: '경북 지역 야시장 일정 정리본 있으신 분 계신가요?', views: 76, likes: 3, tags: ['야시장', '경북', '정보공유'], imageUrl: '', createdAt: '07.12' }
-]);
+// 상태 데이터 변수
+const posts = ref([]);
+const isLoading = ref(true);
+const error = ref(null);
 
-// 앱 마운트 시 localStorage에서 북마크 내역 불러오기
-onMounted(() => {
-  if (route.query.category) {
-    selectedCategory.value = route.query.category;
-  }
-  
-  const savedBookmarks = localStorage.getItem('localhub_bookmarks');
-  if (savedBookmarks) {
-    bookmarkedIds.value = JSON.parse(savedBookmarks);
-  }
-});
+// 페이징 및 동적 쿼리 관련 변수
+const currentPage = ref(Number(route.query.page) || 1);
+const pageSize = ref(10); // 한 페이지당 10개 고정
+const totalPages = ref(1);
+const selectedCategory = ref(route.query.category || 'ALL');
+const searchQuery = ref(route.query.keyword || '');
 
-const filterByCategory = (categoryValue) => {
-  selectedCategory.value = categoryValue;
-  router.push({ path: '/board', query: categoryValue === 'all' ? {} : { category: categoryValue } });
+// 북마크 로컬 스토리지 배열
+const bookmarkedIds = ref(JSON.parse(localStorage.getItem('bookmarked_posts') || '[]'));
+
+// 1번 API 호출 로직 (목록 조회)
+const fetchPosts = async () => {
+  try {
+    isLoading.value = true;
+    error.value = null;
+
+    // API 요청 매개변수 빌드
+    const params = {
+      page: currentPage.value,
+      size: pageSize.value
+    };
+
+    // 카테고리가 전체('ALL')가 아니면 명세서대로 필터 추가
+    if (selectedCategory.value !== 'ALL') {
+      params.category = selectedCategory.value;
+    }
+
+    // 검색어가 존재하면 키워드 필터 추가
+    if (searchQuery.value.trim()) {
+      params.keyword = searchQuery.value.trim();
+    }
+
+    // GET /api/posts 호출
+    const response = await api.get('/api/posts', { params });
+
+    if (response.data) {
+      posts.value = response.data.items || [];
+      currentPage.value = response.data.page || 1;
+      pageSize.value = response.data.size || 10;
+      
+      // 전체 페이지 수 산출 (백엔드 총 개수가 응답에 온다면 변환 가능, 명세서 규격에 맞게 유연하게 처리)
+      // 명세서 예시 응답 구조에 총 페이지(totalPages) 등이 포함되어 있다고 가정하거나 
+      // 예시 스펙을 기반으로 백엔드에서 반환하는 totalPages 값을 할당합니다.
+      totalPages.value = response.data.totalPages || Math.ceil((response.data.total || 10) / pageSize.value) || 1;
+    }
+  } catch (err) {
+    console.error('게시글 페치 실패:', err);
+    error.value = err.response?.data?.message || '게시글 목록을 로드하는 중 오류가 발생했습니다.';
+  } finally {
+    isLoading.value = false;
+  }
 };
 
-// 🌟 localStorage 연동 북마크 토글 및 동기화 저장 함수
-const toggleBookmark = (id) => {
-  const index = bookmarkedIds.value.indexOf(id);
-  if (index > -1) {
-    bookmarkedIds.value.splice(index, 1);
-  } else {
-    bookmarkedIds.value.push(id);
-  }
-  // 로컬스토리지에 변경된 배열 동기화
-  localStorage.setItem('localhub_bookmarks', JSON.stringify(bookmarkedIds.value));
+// URL 쿼리가 바뀔 때 화면 상태를 동기화하고 API를 호출하는 함수
+const syncRouteAndFetch = () => {
+  currentPage.value = Number(route.query.page) || 1;
+  selectedCategory.value = route.query.category || 'ALL';
+  searchQuery.value = route.query.keyword || '';
+  fetchPosts();
+};
+
+// 컴포넌트 마운트 및 라우터 쿼리 변경 실시간 감시(Watch)
+onMounted(() => {
+  syncRouteAndFetch();
+});
+
+watch(() => route.query, () => {
+  syncRouteAndFetch();
+}, { deep: true });
+
+// URL 라우터 푸시를 통해 상태 제어 (히스토리 뒤로가기 완벽 지원)
+const updateRoute = () => {
+  const query = {
+    page: currentPage.value
+  };
+  if (selectedCategory.value !== 'ALL') query.category = selectedCategory.value;
+  if (searchQuery.value.trim()) query.keyword = searchQuery.value.trim();
+
+  router.push({ path: '/board', query });
+};
+
+// 액션 이벤트 핸들러들
+const filterByCategory = (categoryValue) => {
+  selectedCategory.value = categoryValue;
+  currentPage.value = 1; // 카테고리 변경 시 1페이지로 복귀
+  updateRoute();
+};
+
+const handleSearch = () => {
+  currentPage.value = 1; // 검색 시 1페이지로 복귀
+  updateRoute();
+};
+
+const changePage = (page) => {
+  if (page < 1 || page > totalPages.value) return;
+  currentPage.value = page;
+  updateRoute();
 };
 
 const goToDetail = (id) => {
   router.push(`/board/${id}`);
 };
 
-// 카테고리 및 검색 조건만 반영한 필터링 연산 (북마크 필터 제외)
-const filteredPosts = computed(() => {
-  return mockPosts.value.filter(post => {
-    // 1. 카테고리 필터
-    const matchesCategory = selectedCategory.value === 'all' || post.categoryKey === selectedCategory.value;
-    
-    // 2. 검색어 필터
-    const query = searchQuery.value.trim().toLowerCase();
-    let matchesSearch = true;
-    if (query) {
-      if (query.startsWith('#')) {
-        const tagQuery = query.substring(1);
-        matchesSearch = post.tags.some(tag => tag.toLowerCase().includes(tagQuery));
-      } else {
-        matchesSearch = post.title.toLowerCase().includes(query) || 
-                        post.tags.some(tag => tag.toLowerCase().includes(query));
-      }
-    }
+// 유틸리티 함수 (CSS 스타일 클래스 지정 및 날짜 포맷팅)
+const getCategoryClass = (categoryName) => {
+  switch (categoryName) {
+    case '관광지': return 'tour';
+    case '맛집': return 'restaurant';
+    case '축제·행사': return 'festival';
+    default: return 'default';
+  }
+};
 
-    return matchesCategory && matchesSearch;
-  });
-});
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
+// 북마크 로컬 스토리지 제어 기능
+const isBookmarked = (id) => bookmarkedIds.value.includes(id);
+
+const toggleBookmark = (id) => {
+  if (isBookmarked(id)) {
+    bookmarkedIds.value = bookmarkedIds.value.filter(bId => bId !== id);
+  } else {
+    bookmarkedIds.value.push(id);
+  }
+  localStorage.setItem('bookmarked_posts', JSON.stringify(bookmarkedIds.value));
+};
 </script>
 
 <style scoped>
 .board-list-view {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 20px 10px;
 }
+
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
+  margin-bottom: 20px;
 }
+
+/* 카테고리 탭 디자인 */
 .category-tabs {
   display: flex;
   gap: 10px;
   border-bottom: 2px solid #dee2e6;
-  padding-bottom: 10px;
+  padding-bottom: 0;
+  margin-bottom: 20px;
 }
 .tab-btn {
   background: none;
   border: none;
+  padding: 10px 20px;
   font-size: 16px;
   font-weight: 500;
   color: #495057;
-  padding: 8px 16px;
   cursor: pointer;
+  position: relative;
+  bottom: -2px;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+}
+.tab-btn:hover {
+  color: #007bff;
 }
 .tab-btn.active {
   color: #007bff;
+  border-bottom: 2px solid #007bff;
   font-weight: bold;
-  border-bottom: 3px solid #007bff;
-  margin-bottom: -13px;
 }
 
+/* 액션 바 스타일 */
 .board-actions {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  margin-bottom: 15px;
   gap: 15px;
   flex-wrap: wrap;
 }
 .search-box {
   display: flex;
-  flex-grow: 1;
-  max-width: 500px;
+  gap: 6px;
+  flex: 1;
+  max-width: 450px;
 }
 .search-input {
-  flex-grow: 1;
-  padding: 10px 14px;
+  flex: 1;
+  padding: 8px 12px;
   border: 1px solid #ced4da;
-  border-radius: 4px 0 0 4px;
+  border-radius: 4px;
   font-size: 14px;
-  outline: none;
 }
 .search-btn {
-  padding: 0 20px;
-  background-color: #333333;
+  padding: 8px 16px;
+  background-color: #6c757d;
   color: white;
   border: none;
-  border-radius: 0 4px 4px 0;
-  cursor: pointer;
-}
-.action-right {
-  display: flex;
-  gap: 10px;
-}
-.write-btn {
-  padding: 10px 20px;
-  background-color: #007bff;
-  color: white;
-  text-decoration: none;
   border-radius: 4px;
-  font-weight: bold;
+  cursor: pointer;
   font-size: 14px;
 }
+.search-btn:hover {
+  background-color: #5a6268;
+}
+.write-btn {
+  display: inline-block;
+  padding: 8px 16px;
+  background-color: #007bff;
+  color: white;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+}
+.write-btn:hover {
+  background-color: #0069d9;
+}
 
+/* 테이블 레이아웃 및 스타일 */
 .table-wrapper {
-  background-color: white;
+  background: white;
   border: 1px solid #dee2e6;
   border-radius: 8px;
   overflow: hidden;
+  margin-bottom: 20px;
 }
 .board-table {
   width: 100%;
   border-collapse: collapse;
+  text-align: left;
 }
 .board-table th {
   background-color: #f8f9fa;
   padding: 12px;
   font-size: 14px;
+  font-weight: 600;
   color: #495057;
   border-bottom: 2px solid #dee2e6;
 }
 .board-table td {
   padding: 14px 12px;
   font-size: 14px;
-  border-bottom: 1px solid #eff2f5;
+  border-bottom: 1px solid #efefef;
 }
-.post-row {
-  cursor: pointer;
-}
-.post-row:hover {
+.board-table tbody tr:hover td {
   background-color: #f8f9fa;
 }
 
-.th-bookmark, .td-bookmark { width: 6%; text-align: center; }
-.th-num, .td-num { width: 8%; text-align: center; color: #6c757d; }
+/* 테이블 열 정밀 너비 배정 */
+.th-bookmark { width: 8%; text-align: center; }
+.td-bookmark { text-align: center; }
+.th-num { width: 8%; text-align: center; }
+.td-num { text-align: center; color: #6c757d; }
 .th-cat { width: 12%; }
 .th-title { width: 45%; }
 .th-views, .td-views { width: 10%; text-align: center; color: #6c757d; }
@@ -295,14 +402,22 @@ const filteredPosts = computed(() => {
 .title-container {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   flex-wrap: wrap;
+}
+.td-title {
+  cursor: pointer;
+}
+.td-title:hover .title-text {
+  color: #007bff;
+  text-decoration: underline;
 }
 .image-clip-icon {
   font-size: 14px;
 }
 .title-text {
   font-weight: 500;
+  color: #212529;
 }
 .tag-list-inline {
   display: flex;
@@ -316,37 +431,59 @@ const filteredPosts = computed(() => {
   border-radius: 3px;
 }
 
+/* 데이터 흐름용 컴포넌트 처리 상태 */
+.loading-state, .error-state, .empty-state {
+  padding: 40px;
+  text-align: center;
+  color: #6c757d;
+  font-size: 14px;
+}
+.error-state { color: #dc3545; }
+
+/* 카테고리 디자인 배지 */
 .badge {
   display: inline-block;
   padding: 4px 8px;
   border-radius: 4px;
   font-size: 12px;
-  font-weight: bold;
+  font-weight: 600;
 }
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.festival { background-color: #f3e5f5; color: #4a148c; }
+.badge.default { background-color: #e2e8f0; color: #475569; }
 
-.no-data {
-  text-align: center;
-  padding: 40px !important;
-  color: #868e96;
-}
+/* 페이지네이션 버튼 가로 뭉치 */
 .pagination {
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 5px;
+  margin-top: 10px;
 }
 .page-btn {
-  padding: 8px 12px;
+  padding: 6px 12px;
   border: 1px solid #dee2e6;
   background-color: white;
+  color: #007bff;
+  font-size: 14px;
   cursor: pointer;
   border-radius: 4px;
+  transition: all 0.2s ease;
+}
+.page-btn:hover:not(:disabled) {
+  background-color: #e9ecef;
 }
 .page-btn.active {
   background-color: #007bff;
   color: white;
   border-color: #007bff;
+  font-weight: bold;
+}
+.page-btn:disabled {
+  color: #6c757d;
+  background-color: #f8f9fa;
+  cursor: not-allowed;
+  border-color: #dee2e6;
 }
 </style>
