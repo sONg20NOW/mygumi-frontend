@@ -2,18 +2,21 @@
   <div class="board-detail-view">
     <div class="breadcrumb">홈 > 게시판 > 상세조회</div>
 
-    <div v-if="post" class="post-container">
+    <div v-if="isLoading" class="loading-state">게시글을 불러오는 중입니다...</div>
+    <div v-else-if="error" class="error-state">{{ error }}</div>
+
+    <div v-else-if="post" class="post-container">
       <div class="post-header">
-        <span class="badge" :class="post.categoryKey">{{ post.categoryName }}</span>
+        <span class="badge" :class="getCategoryClass(post.category)">{{ post.category }}</span>
         <h1 class="post-title">{{ post.title }}</h1>
         
         <div class="post-meta">
           <span class="meta-item">작성자: 익명</span>
-          <span class="meta-item">작성일: {{ post.createdAt }}</span>
-          <span class="meta-item">👁️ 조회수: {{ post.views }}</span>
+          <span class="meta-item">작성일: {{ formatDate(post.createdAt) }}</span>
+          <span class="meta-item">👁️ 조회수: {{ post.viewCount }}</span>
           <span class="meta-item">
             <button @click="handleLike" class="like-btn" :class="{ liked: isLiked }">
-              ❤️ 좋아요 {{ post.likes }}
+              ❤️ 좋아요 {{ post.likeCount }}
             </button>
           </span>
         </div>
@@ -28,7 +31,7 @@
         </div>
       </div>
 
-      <div class="post-tags-container">
+      <div v-if="post.tags && post.tags.length" class="post-tags-container">
         <span v-for="tag in post.tags" :key="tag" class="detail-tag">#{{ tag }}</span>
       </div>
 
@@ -46,19 +49,22 @@
           <button @click="closeModal" class="close-x-btn">✕</button>
         </div>
         <div class="modal-body">
-          <p>게시글 등록 시 설정한 수정용 비밀번호를 입력하세요.</p>
+          <p>게시글 등록 시 설정한 비밀번호를 입력하세요.</p>
           <input 
             v-model="inputPassword" 
             type="password" 
             placeholder="비밀번호 입력" 
             class="password-input"
             @keyup.enter="submitPassword"
+            :disabled="isSubmitting"
           />
           <p v-if="errorMessage" class="error-msg">{{ errorMessage }}</p>
         </div>
         <div class="modal-footer">
-          <button @click="submitPassword" class="modal-submit-btn">확인</button>
-          <button @click="closeModal" class="modal-cancel-btn">취소</button>
+          <button @click="submitPassword" class="modal-submit-btn" :disabled="isSubmitting">
+            {{ isSubmitting ? '처리 중...' : '확인' }}
+          </button>
+          <button @click="closeModal" class="modal-cancel-btn" :disabled="isSubmitting">취소</button>
         </div>
       </div>
     </div>
@@ -68,39 +74,63 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
+import api from '@/api/index.js'; // ⭕ 공통 api 인스턴스 사용
 
 const router = useRouter();
 const route = useRoute();
 
 const post = ref(null);
+const isLoading = ref(true);
+const error = ref(null);
+
 const isModalOpen = ref(false);
 const modalMode = ref('');
 const inputPassword = ref('');
 const errorMessage = ref('');
+const isSubmitting = ref(false);
+
+// 좋아요는 브라우저 세션 동안 중복 클릭 인터페이스 토글 처리를 위한 클라이언트 로컬 상태 변수
 const isLiked = ref(false);
 
-const mockPostsDetails = [
-  { id: 5, categoryKey: 'tour', categoryName: '관광지', title: '이번 주말에 금오산 둘레길 다녀왔는데 단풍 장난 아니네요!', content: '오랜만에 주말을 맞아 가족들과 구미 금오산 둘레길에 다녀왔습니다. 날씨도 선선하고 단풍이 예쁘게 물들어서 산책하기 딱 좋더라고요. 주차장이 조금 협소하긴 하지만 주말 나들이 코스로 강력 추천합니다! 다들 이번 주말에 꼭 가보세요.', views: 95, likes: 18, tags: ['금오산', '단풍', '나들이'], imageUrl: 'https://picsum.photos/600/300', password: '1234', createdAt: '2026.07.14 10:30' },
-  { id: 4, categoryKey: 'restaurant', categoryName: '맛집', title: '구미역 뒤쪽에 진짜 숨은 뇨끼 맛집 공유합니다.', content: '금오산 가는 길 골목에 새로 오픈한 양식당인데, 감자 뇨끼가 정말 쫀득하고 크림 소스가 진해서 감동받았습니다. 분위기도 아늑해서 데이트 코스로 좋을 것 같아요. 매장이 좁으니 주말엔 예약 방문을 권장합니다.', views: 210, likes: 32, tags: ['금리단길', '뇨끼', '맛집'], imageUrl: '', password: '5678', createdAt: '2026.07.13 14:20' }
-];
-
 onMounted(() => {
-  const postId = parseInt(route.params.id);
-  const foundPost = mockPostsDetails.find(p => p.id === postId);
-  
-  if (foundPost) {
-    post.value = foundPost;
-    post.value.views += 1; // 상세에 유입되었으므로 조회수 1 증가 (추가 기능 가상화)
-  }
+  fetchPostDetail();
 });
 
-const handleLike = () => {
-  if (isLiked.value) {
-    post.value.likes -= 1;
-    isLiked.value = false;
-  } else {
-    post.value.likes += 1;
-    isLiked.value = true;
+// ⭐ [2번 API] 게시글 상세 조회 (GET /api/posts/{post_id})
+const fetchPostDetail = async () => {
+  try {
+    isLoading.value = true;
+    error.value = null;
+    const postId = route.params.id;
+
+    const response = await api.get(`/api/posts/${postId}`);
+    if (response.data) {
+      post.value = response.data;
+    }
+  } catch (err) {
+    console.error('게시글 상세 조회 실패:', err);
+    error.value = err.response?.data?.message || '존재하지 않거나 삭제된 게시글입니다.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+// ⭐ [9번 API] 게시글 좋아요 증가 (POST /api/posts/{post_id}/likes)
+const handleLike = async () => {
+  if (!post.value) return;
+
+  try {
+    // API 명세서 9번 스펙 호출
+    const response = await api.post(`/api/posts/${post.value.id}/likes`);
+    
+    if (response.data && typeof response.data.likeCount === 'number') {
+      // 9번 API 응답 반환값 내부의 likeCount로 실시간 화면 업데이트 반영
+      post.value.likeCount = response.data.likeCount;
+      isLiked.value = true; // 임시 액티브 스타일 상태 설정
+    }
+  } catch (err) {
+    console.error('좋아요 반영 실패:', err);
+    alert('좋아요 처리에 실패했습니다.');
   }
 };
 
@@ -108,6 +138,7 @@ const goToList = () => {
   router.push('/board');
 };
 
+// 비밀번호 모달 제어 함수군
 const openModal = (mode) => {
   modalMode.value = mode;
   isModalOpen.value = true;
@@ -119,18 +150,69 @@ const closeModal = () => {
   isModalOpen.value = false;
 };
 
-const submitPassword = () => {
-  if (inputPassword.value === post.value.password) {
-    closeModal();
-    if (modalMode.value === 'edit') {
-      router.push(`/board/edit/${post.value.id}`);
-    } else {
-      alert('게시글이 삭제되었습니다.');
-      goToList();
-    }
-  } else {
-    errorMessage.value = '비밀번호가 틀렸습니다.';
+// 비밀번호 검증 후 분기 처리 (수정모드 이동 or [5번 API] 게시글 삭제 연동)
+const submitPassword = async () => {
+  if (!inputPassword.value.trim()) {
+    errorMessage.value = '비밀번호를 입력해 주세요.';
+    return;
   }
+
+  if (modalMode.value === 'edit') {
+    // 💡 프론트엔드 내에서 수정 컴포넌트로 넘어갈 때 비밀번호 검증 단계는 
+    // 통상 수정 폼(/board/edit/:id) 내에서 실제 수정 PUT 요청을 보낼 때 원천 차단/검증하므로, 
+    // 여기서는 사용자가 입력한 비밀번호 정보를 수정한 페이지로 가지고 이동하도록 처리합니다.
+    closeModal();
+    router.push({
+      path: `/board/edit/${post.value.id}`,
+      state: { verifyPassword: inputPassword.value } // 라우터 state 전달 활용
+    });
+  } else if (modalMode.value === 'delete') {
+    // [5번 API] 삭제 API 바로 호출 검증
+    try {
+      isSubmitting.value = true;
+      errorMessage.value = '';
+
+      await api.delete(`/api/posts/${post.value.id}`, {
+        data: { password: inputPassword.value }
+      });
+
+      alert('게시글이 삭제되었습니다.');
+      closeModal();
+      goToList();
+    } catch (err) {
+      console.error('게시글 삭제 실패:', err);
+      // 공통 오류 형식 중 비밀번호 오류 분기 처리
+      if (err.response?.status === 403) {
+        errorMessage.value = '비밀번호가 일치하지 않습니다.';
+      } else {
+        errorMessage.value = err.response?.data?.message || '삭제 도중 오류가 발생했습니다.';
+      }
+    } finally {
+      isSubmitting.value = false;
+    }
+  }
+};
+
+// 유틸리티 매핑 함수 (한글 카테고리 CSS 바인딩 매핑)
+const getCategoryClass = (categoryName) => {
+  switch (categoryName) {
+    case '관광지': return 'tour';
+    case '맛집': return 'restaurant';
+    case '축제·행사': return 'festival';
+    default: return 'default';
+  }
+};
+
+// 날짜 문자열 전처리 포맷 함수
+const formatDate = (dateStr) => {
+  if (!dateStr) return '';
+  const date = new Date(dateStr);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${yyyy}.${mm}.${dd} ${hh}:${min}`;
 };
 </script>
 
@@ -175,6 +257,7 @@ const submitPassword = () => {
   border-radius: 20px;
   cursor: pointer;
   font-weight: bold;
+  transition: all 0.2s ease;
 }
 .like-btn.liked {
   background-color: #dc3545;
@@ -236,7 +319,7 @@ const submitPassword = () => {
 .delete-btn { background-color: #dc3545; color: white; }
 .list-btn { background-color: #6c757d; color: white; }
 
-/* 모달 */
+/* 모달 스타일 */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
@@ -273,6 +356,17 @@ const submitPassword = () => {
 .modal-submit-btn { padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
 .modal-cancel-btn { padding: 8px 16px; background-color: #e9ecef; color: #495057; border: none; border-radius: 4px; cursor: pointer; }
 
+/* 상태별 스타일 */
+.loading-state, .error-state {
+  text-align: center;
+  padding: 50px;
+  color: #6c757d;
+  font-size: 15px;
+}
+.error-state {
+  color: #dc3545;
+}
+
 .badge {
   display: inline-block;
   padding: 4px 8px;
@@ -282,4 +376,6 @@ const submitPassword = () => {
 }
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
+.badge.festival { background-color: #f3e5f5; color: #4a148c; }
+.badge.default { background-color: #e2e8f0; color: #475569; }
 </style>
