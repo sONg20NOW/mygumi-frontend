@@ -19,7 +19,7 @@
         <div class="post-meta">
           <span class="meta-item">작성자: 익명</span>
           <span class="meta-item">작성일: {{ formatDate(post.createdAt) }}</span>
-          <span class="meta-item">👁️ 조회수: {{ post.viewCount }}</span>
+          <span class="meta-item">👀 조회수: {{ post.viewCount }}</span>
           <span class="meta-item">
             <button 
               ref="likeButtonRef"
@@ -34,11 +34,12 @@
       </div>
 
       <div class="post-body">
-        <div v-if="post.imageUrl" class="attached-image-container">
-          <img :src="post.imageUrl" alt="첨부 이미지" class="attached-image" />
-        </div>
         <div class="post-content">
           {{ post.content }}
+        </div>
+        
+        <div v-if="post.imageUrl" class="attached-image-container">
+          <img :src="fullImageUrl" alt="첨부 이미지" class="attached-image" />
         </div>
       </div>
 
@@ -83,7 +84,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
 import api from '@/api/index.js';
 
@@ -102,15 +103,27 @@ const isSubmitting = ref(false);
 
 const isLiked = ref(false);
 
-// 🌟 애니메이션용 상태 변수 및 DOM 참조 관리
 const isPopAnimating = ref(false);
 const likeButtonRef = ref(null);
+
+const fullImageUrl = computed(() => {
+  if (!post.value || !post.value.imageUrl) return '';
+  
+  if (post.value.imageUrl.startsWith('http://') || post.value.imageUrl.startsWith('https://')) {
+    return post.value.imageUrl;
+  }
+
+  const baseUrl = import.meta.env.VITE_API_URL || '';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanPath = post.value.imageUrl.startsWith('/') ? post.value.imageUrl : `/${post.value.imageUrl}`;
+
+  return `${cleanBase}${cleanPath}`;
+});
 
 onMounted(() => {
   fetchPostDetail();
 });
 
-// [2번 API] 게시글 상세 조회
 const fetchPostDetail = async () => {
   try {
     isLoading.value = true;
@@ -129,25 +142,21 @@ const fetchPostDetail = async () => {
   }
 };
 
-// 🌟 파핑 하트 요소 생성 헬퍼 함수
 const createFloatingHeart = (buttonEl) => {
   if (!buttonEl) return;
   
   const rect = buttonEl.getBoundingClientRect();
   
-  // 버튼 주위에서 튀어나올 하트 4개 임의 생성
   for (let i = 0; i < 4; i++) {
     const heart = document.createElement('span');
     heart.innerText = '❤️';
     heart.className = 'floating-heart-particle';
     
-    // 버튼의 중앙 상단 부근을 타겟 좌표로 시작점 계산
     const startX = window.scrollX + rect.left + rect.width / 2;
     const startY = window.scrollY + rect.top;
     
-    // 랜덤한 분산 궤적 값 설정
-    const moveX = (Math.random() - 0.5) * 60; // 좌우 분산 범위
-    const moveY = -(Math.random() * 40 + 40);   // 위로 솟구치는 범위
+    const moveX = (Math.random() - 0.5) * 60; 
+    const moveY = -(Math.random() * 40 + 40);   
     
     heart.style.left = `${startX}px`;
     heart.style.top = `${startY}px`;
@@ -156,19 +165,16 @@ const createFloatingHeart = (buttonEl) => {
     
     document.body.appendChild(heart);
     
-    // 애니메이션이 끝나면 DOM에서 확실하게 제거 (메모리 누수 방지)
     setTimeout(() => {
       heart.remove();
     }, 800);
   }
 };
 
-// ⭐ [9번 API] 게시글 좋아요 증가
 const handleLike = async () => {
   if (!post.value) return;
 
   try {
-    // 🌟 버튼 통통 튀는 애니메이션 실행 및 하트 파티 이펙트 트리거
     isPopAnimating.value = true;
     createFloatingHeart(likeButtonRef.value);
     setTimeout(() => {
@@ -177,7 +183,6 @@ const handleLike = async () => {
 
     const response = await api.post(`/api/posts/${post.value.id}/likes`);
     
-    // 🌟 [수정 사항] response.data.likeCount에서 명세서 변경 스펙인 "like_count"로 필칭 매핑 변경
     if (response.data && typeof response.data.like_count === 'number') {
       post.value.likeCount = response.data.like_count;
       isLiked.value = true;
@@ -303,9 +308,10 @@ const formatDate = (dateStr) => {
   margin-bottom: 20px;
 }
 .post-title {
+  font-weight: bold;
   font-size: 24px;
   color: #212529;
-  margin: 10px 0;
+  margin: 20px 0;
 }
 .post-meta {
   font-size: 13px;
@@ -315,7 +321,6 @@ const formatDate = (dateStr) => {
   align-items: center;
 }
 
-/* 🌟 좋아요 버튼 및 통통 애니메이션 스타일 */
 .like-btn {
   position: relative;
   background: none;
@@ -337,7 +342,6 @@ const formatDate = (dateStr) => {
 .like-btn:active {
   transform: scale(0.95);
 }
-/* 클릭했을 때 살짝 확대됐다가 돌아오는 바운스 효과 */
 .like-btn.pop-animation {
   animation: buttonBounce 0.3s ease-in-out;
 }
@@ -353,16 +357,25 @@ const formatDate = (dateStr) => {
   flex-direction: column;
   gap: 20px;
 }
+
+/* 🌟 [수정 완료] 정렬 연속성 및 하단 배치를 고려한 여백 부여 */
 .attached-image-container {
   max-width: 100%;
+  margin-top: 10px;
   border-radius: 8px;
   overflow: hidden;
+  align-self: flex-start; /* 좌측 정렬 유지 */
 }
+
+/* 🌟 [수정 완료] 세로가 긴 이미지가 와도 캘린더나 레이아웃을 해치지 않도록 최대 높이 제한 및 비율 자동화 지정 */
 .attached-image {
   max-width: 100%;
+  max-height: 500px;    /* 👈 최대 높이를 500px로 적절하게 고정 */
+  object-fit: contain;   /* 👈 비율 깨짐 없이 컨테이너 내부에 안착 */
   height: auto;
   display: block;
 }
+
 .post-content {
   font-size: 16px;
   line-height: 1.6;
@@ -451,7 +464,7 @@ const formatDate = (dateStr) => {
 
 .badge {
   display: inline-block;
-  padding: 4px 8px;
+  padding: 0px 8px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: bold;
@@ -466,7 +479,7 @@ const formatDate = (dateStr) => {
 .floating-heart-particle {
   position: absolute;
   font-size: 16px;
-  pointer-events: none; /* 마우스 클릭 인터셉트 방지 */
+  pointer-events: none; 
   animation: heartFloatUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
   z-index: 9999;
 }
