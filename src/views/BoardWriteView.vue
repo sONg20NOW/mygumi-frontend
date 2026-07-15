@@ -105,7 +105,6 @@ const tagInput = ref('');
 const imagePreview = ref('');
 const selectedFile = ref(null);
 
-// 컴포넌트 내부 상태는 여전히 배열(Array)로 관리하여 뱃지 렌더링 및 개별 삭제를 유용하게 유지합니다.
 const formData = reactive({
   category: '',
   title: '',
@@ -122,7 +121,7 @@ onMounted(() => {
   }
 });
 
-// [2번 API] 수정 시 기존 데이터 단건 조회
+// [2번 API] 수정 시 기존 데이터 단건 조회 (GET /api/posts/{post_id})
 const fetchPostDetail = async () => {
   try {
     isInitialLoading.value = true;
@@ -134,8 +133,8 @@ const fetchPostDetail = async () => {
       formData.content = response.data.content;
       formData.tags = response.data.tags || [];
       
-      if (response.data.thumbnailUrl) {
-        imagePreview.value = response.data.thumbnailUrl;
+      if (response.data.imageUrl) {
+        imagePreview.value = response.data.imageUrl;
       }
     }
   } catch (err) {
@@ -186,29 +185,36 @@ const handleSubmit = async () => {
   try {
     isSubmitting.value = true;
 
-    const submitData = new FormData();
-    submitData.append('category', formData.category);
-    submitData.append('title', formData.title);
-    submitData.append('content', formData.content);
-    submitData.append('password', formData.password);
-    
-    // ⭐ [수정 사항] 배열['금오산', '주차']을 명세서 규격에 맞게 쉼표 구분 문자열("금오산,주차")로 조인하여 전송
-    const tagsString = formData.tags.join(',');
-    submitData.append('tags', tagsString);
-
-    if (selectedFile.value) {
-      submitData.append('thumbnail', selectedFile.value);
-    }
-
     if (isEditMode.value) {
-      // [4번 API] 게시글 수정
-      await api.put(`/api/posts/${postId.value}`, submitData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
-      });
+      // ⭐ [4번 API] 게시글 수정 (PUT /api/posts/{post_id})
+      // 명세서 규격상 application/json 형식을 따르며, tags는 문자열 배열 형태로 그대로 보냅니다.
+      const updateData = {
+        category: formData.category,
+        title: formData.title,
+        content: formData.content,
+        password: formData.password,
+        tags: formData.tags // 🌟 문자열 배열로 전송
+      };
+
+      await api.put(`/api/posts/${postId.value}`, updateData);
       alert('게시글이 성공적으로 수정되었습니다.');
       router.push(`/board/${postId.value}`);
     } else {
-      // [3번 API] 게시글 신규 등록
+      // ⭐ [3번 API] 게시글 신규 등록 (POST /api/posts)
+      // multipart/form-data 형식을 따르며, tags는 쉼표 구분 문자열 형태로 보냅니다.
+      const submitData = new FormData();
+      submitData.append('category', formData.category);
+      submitData.append('title', formData.title);
+      submitData.append('content', formData.content);
+      submitData.append('password', formData.password);
+      
+      const tagsString = formData.tags.join(',');
+      submitData.append('tags', tagsString); // 🌟 쉼표로 구분된 단일 문자열로 전송
+
+      if (selectedFile.value) {
+        submitData.append('imageUrl', selectedFile.value);
+      }
+
       const response = await api.post('/api/posts', submitData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -267,6 +273,7 @@ const goBack = () => {
 </script>
 
 <style scoped>
+/* 기존 스타일 그대로 유지 */
 .board-write-view {
   max-width: 800px;
   margin: 0 auto;
