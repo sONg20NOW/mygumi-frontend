@@ -304,6 +304,7 @@ const getCategoryClass = (catName) => {
   font-size: 16px;
   padding: 15px;
   border-bottom: 1px solid #dee2e6;
+  font-weight: bold;
   margin: 0;
   background-color: white;
 }
