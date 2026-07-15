@@ -6,7 +6,8 @@
       <span class="current-page">게시판</span>
     </div>
 
-    <div class="category-tabs">
+      <div class="center-area">
+      <div class="category-tabs">
       <button 
         v-for="tab in categories" 
         :key="tab.value"
@@ -102,6 +103,7 @@
       >
         다음 &gt;
       </button>
+    </div>
     </div>
   </div>
 </template>
@@ -260,10 +262,10 @@ const toggleBookmark = (id) => {
 </script>
 
 <style scoped>
-.board-list-view {
-  max-width: 1000px;
+
+.center-area {
   margin: 0 auto;
-  padding: 20px 10px;
+  text-align: center;
 }
 
 /* 🌟 브레드크럼 스타일 고도화 (BoardWriteView 구조와 통일) */
