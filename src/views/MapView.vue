@@ -156,6 +156,25 @@ const fetchMarkers = async () => {
       places.value = response.data.items;
       await nextTick();
       updateMarkers();
+
+      // 🌟 [버그 해결 및 고도화 핵심] API 조회가 끝나고 데이터가 바인딩된 시점에 라우터 쿼리를 검사합니다.
+      if (route.query.place) {
+        const queryPlace = route.query.place.trim();
+        
+        // 장소명에 캘린더에서 넘어온 주소가 포함되어 있거나, 주소가 일치하는 항목 검색
+        const found = places.value.find(p => 
+          (p.address && queryPlace.includes(p.address)) || 
+          (p.name && queryPlace.includes(p.name)) ||
+          (p.address && p.address.includes(queryPlace))
+        );
+
+        if (found) {
+          // 해당 장소 이름을 사이드바 검색창에 자동으로 채워주어 리스트 필터링 연동
+          sidebarSearchQuery.value = found.name;
+          // 지도 포커싱 및 팝업 오픈
+          focusOnPlace(found);
+        }
+      }
     }
   } catch (err) {
     console.error('지도 마커 로드 실패:', err);
@@ -268,22 +287,16 @@ onMounted(async () => {
   await nextTick();
   initMap();
 
-  // 🌟 [버그 해결 핵심] 모바일 초기 로딩 시 레이아웃 변화가 정착된 후 지도를 강제로 리사이즈 시켜 깨짐 현상을 해결합니다.
   setTimeout(() => {
     if (map) {
       map.invalidateSize();
     }
-  }, 350); // 사이드바 애니메이션 및 반응형 DOM 렌더링이 완전히 정착될 시간을 부여합니다.
+  }, 350); 
 
   document.addEventListener('fullscreenchange', handleFullscreenChange);
-
-  if (route.query.place) {
-    await nextTick();
-    const found = places.value.find(p => p.name.includes(route.query.place));
-    if (found) {
-      focusOnPlace(found);
-    }
-  }
+  
+  // 🌟 [수정 완료] 기존 onMounted 내부에 불완전하게 존재하던 route.query.place 처리문은 
+  // fetchMarkers 데이터 로드 후 시점으로 완전 이관 및 삭제했습니다.
 });
 
 onUnmounted(() => {

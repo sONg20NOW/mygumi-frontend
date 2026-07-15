@@ -59,11 +59,14 @@
               {{ selectedEvent.start }}{{ selectedEvent.end ? ' ~ ' + selectedEvent.end : '' }}
             </span>
           </div>
-          <div class="info-group">
+          
+          <div class="info-group is-clickable" @click="navigateToPlaceMap(selectedEvent.address)" title="지도로 이동하여 확인하기">
             <span class="info-label">📍 장소</span>
-            <span class="info-value place-value">{{ selectedEvent.address || '장소 정보 없음' }}</span>
+            <span class="info-value place-value linked-place-text">
+              {{ selectedEvent.address || '장소 정보 없음' }}
+            </span>
           </div>
-          </div>
+        </div>
         <div class="modal-footer">
           <button @click="selectedEvent = null" class="modal-close-action-btn">확인</button>
         </div>
@@ -74,8 +77,10 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
-import { RouterLink } from 'vue-router';
+import { RouterLink, useRouter } from 'vue-router'; // 🌟 라우터 점프를 위해 useRouter 추가 임포트
 import api from '@/api/index.js';
+
+const router = useRouter(); // 🌟 라우터 인스턴스 활성화
 
 const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
@@ -188,6 +193,20 @@ const isToday = (day) => {
 
 const showEventDetail = (event) => {
   selectedEvent.value = event;
+};
+
+// 🌟 [신규 기능] 팝업 내부 장소 주소 클릭 시 지도 페이지로 파라미터를 넘겨 점프하는 함수
+const navigateToPlaceMap = (addressText) => {
+  if (!addressText || addressText === '장소 정보 없음') return;
+
+  // 팝업 닫기
+  selectedEvent.value = null;
+
+  // MapView.vue에 기설정된 route.query.place 탐색 로직 규칙에 매핑되도록 전송
+  router.push({
+    path: '/map',
+    query: { place: addressText }
+  });
 };
 </script>
 
@@ -415,14 +434,25 @@ const showEventDetail = (event) => {
 .info-group {
   display: flex;
   font-size: 14px;
-  align-items: flex-start; /* 🌟 장소가 길어져서 개행될 때 라벨(📍 장소)이 상단에 고정되도록 변경 */
+  align-items: flex-start;
+}
+
+/* 🌟 하이퍼링크 느낌의 마우스 피드백 클래스 추가 */
+.info-group.is-clickable {
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+.info-group.is-clickable:hover {
+  background-color: #f1f3f5;
 }
 
 .info-label {
   width: 70px;
   font-weight: bold;
   color: #868e96;
-  flex-shrink: 0; /* 🌟 텍스트 가로 공간 부족 시 라벨 너비가 좁아지지 않도록 고정 */
+  flex-shrink: 0;
 }
 
 .info-value {
@@ -430,12 +460,17 @@ const showEventDetail = (event) => {
   font-weight: 500;
 }
 
-/* 🌟 장소 텍스트 전용 스타일: 가로 폭 한계 도달 시 왼쪽 정렬로 줄바꿈 처리 */
 .place-value {
   flex-grow: 1;
-  text-align: left;        /* 👈 왼쪽 정렬 보장 */
-  white-space: normal;     /* 👈 연속 공백/줄바꿈 규칙 기본화 */
-  word-break: break-all;   /* 👈 경계 영역 도달 시 문자 단위 개행 허용 */
+  text-align: left;        
+  white-space: normal;     
+  word-break: break-all;   
+}
+
+/* 🌟 클릭 가능한 텍스트 강조 컬러링 */
+.linked-place-text {
+  color: #007bff !important;
+  text-decoration: underline;
 }
 
 .modal-footer {
