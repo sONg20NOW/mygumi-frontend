@@ -51,19 +51,33 @@
         <table v-else class="posts-table">
           <thead>
             <tr>
-              <th style="width: 15%">카테고리</th>
-              <th style="width: 55%">제목</th>
-              <th style="width: 15%">작성자</th>
-              <th style="width: 15%">작성일</th>
+              <th class="th-cat">카테고리</th>
+              <th class="th-title">제목</th>
+              <th class="th-views">조회수</th>
+              <th class="th-likes">좋아요</th>
+              <th class="th-date">작성일</th>
             </tr>
           </thead>
           <tbody>
             <tr v-for="post in posts" :key="post.id" @click="goToDetail(post.id)">
-              <td>
+              <td class="td-cat">
                 <span class="badge" :class="getCategoryClass(post.category)">{{ post.category }}</span>
               </td>
-              <td class="post-title">{{ post.title }}</td>
-              <td class="anonymous-user">익명</td>
+              <td class="td-title">
+                <div class="title-container">
+                  <div v-if="post.thumbnailUrl" class="thumbnail-wrapper">
+                    <img :src="getFullImageUrl(post.thumbnailUrl)" alt="썸네일" class="list-thumb-img" />
+                  </div>
+                  
+                  <span class="title-text">{{ post.title }}</span>
+                  
+                  <div v-if="post.tags && post.tags.length" class="tag-list-inline">
+                    <span v-for="tag in post.tags" :key="tag" class="inline-tag">#{{ tag }}</span>
+                  </div>
+                </div>
+              </td>
+              <td class="td-views">{{ post.viewCount }}</td>
+              <td class="td-likes">❤️ {{ post.likeCount }}</td>
               <td class="date-col">{{ formatDate(post.createdAt) }}</td>
             </tr>
           </tbody>
@@ -76,21 +90,31 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
-import api from '@/api/index.js'; // ⭕ 정의하신 커스텀 api 인스턴스 import (경로는 프로젝트 구조에 맞게 수정)
-const router = useRouter();
+import api from '@/api/index.js'; //
+const router = useRouter(); //
 
-// API로부터 전달받을 실시간 게시글 데이터 상태 관리
-const posts = ref([]);
-const isLoading = ref(true);
-const error = ref(null);
+const posts = ref([]); //
+const isLoading = ref(true); //
+const error = ref(null); //
 
-// 명세서 규격에 맞게 첫 페이지(`page=1`), 5개 고정(`size=5`)으로 최근 게시글 Fetch
+// 🌟 [수정 완료] 썸네일 이미지 주소를 VITE_API_URL 환경 변수와 조합해 주는 풀 경로 파싱 헬퍼 함수 적용
+const getFullImageUrl = (urlPath) => {
+  if (!urlPath) return '';
+  if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
+    return urlPath;
+  }
+  const baseUrl = import.meta.env.VITE_API_URL || '';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanPath = urlPath.startsWith('/') ? urlPath : `/${urlPath}`;
+  return `${cleanBase}${cleanPath}`;
+};
+
+// 최근 게시글 5개 고정 페치
 const fetchRecentPosts = async () => {
   try {
-    isLoading.ref = true;
-    error.value = null;
+    isLoading.value = true; //
+    error.value = null; //
     
-    // API 명세서 1번 스펙 반영: GET /api/posts?page=1&size=5
     const response = await api.get('/api/posts', {
       params: {
         page: 1,
@@ -98,50 +122,46 @@ const fetchRecentPosts = async () => {
       }
     });
 
-    // 성공 응답 구조 내부의 items 배열을 바인딩
     if (response.data && response.data.items) {
-      posts.value = response.data.items;
+      posts.value = response.data.items; //
     }
   } catch (err) {
-    console.error('게시글 목록 로드 실패:', err);
-    error.value = err.response?.data?.message || '게시글을 불러오는데 실패했습니다.';
+    console.error('게시글 목록 로드 실패:', err); //
+    error.value = err.response?.data?.message || '게시글을 불러오는데 실패했습니다.'; //
   } finally {
-    isLoading.value = false;
+    isLoading.value = false; //
   }
 };
 
-// 컴포넌트 최초 마운트 시점에 실데이터 바인딩 진행
 onMounted(() => {
-  fetchRecentPosts();
+  fetchRecentPosts(); //
 });
 
-// 명세서 상의 한글 카테고리 문자열(관광지, 맛집 등)을 기존 CSS 클래스 매핑용 키로 변환
 const getCategoryClass = (categoryName) => {
   switch (categoryName) {
-    case '관광지': return 'tour';
-    case '맛집': return 'restaurant';
-    case '축제·행사': return 'festival';
-    default: return 'default';
+    case '관광지': return 'tour'; //
+    case '맛집': return 'restaurant'; //
+    case '축제·행사': return 'festival'; //
+    default: return 'default'; //
   }
 };
 
-// API의 "2026-07-14T13:30:00" 포맷 날짜 문자열을 기존 레이아웃 규격인 "MM.DD" 형태로 파싱
+// 날짜 규격을 BoardListView와 통일성 있게 YYYY-MM-DD 형태로 포맷팅 변경
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
+  const yyyy = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
-  return `${month}.${day}`;
+  return `${yyyy}-${month}-${day}`;
 };
 
-// 카테고리 클릭 시 명세서 규격과 맞춰 한글 카테고리 값을 그대로 쿼리 스트링으로 들고 이동
 const navigateToCategory = (categoryName) => {
-  router.push({ path: '/board', query: { category: categoryName } });
+  router.push({ path: '/board', query: { category: categoryName } }); //
 };
 
-// 상세 페이지 이동
 const goToDetail = (id) => {
-  router.push(`/board/${id}`);
+  router.push(`/board/${id}`); //
 };
 </script>
 
@@ -278,7 +298,7 @@ const goToDetail = (id) => {
   color: #6c757d;
 }
 
-/* 게시글 테이블 스타일 */
+/* 게시글 테이블 스타일 고도화 */
 .recent-posts-section {
   background-color: white;
   border: 1px solid #e9ecef;
@@ -324,21 +344,83 @@ const goToDetail = (id) => {
 .posts-table tr:hover td {
   background-color: #f8f9fa;
 }
-.post-title {
-  color: #333;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+
+/* 🌟 [스타일 수정 완료] BoardListView 스펙에 맞춤 정렬 너비 배정 */
+.th-cat { width: 15%; }
+.th-title { width: 55%; }
+.th-views { width: 10%; text-align: center; }
+.th-likes { width: 10%; text-align: center; }
+.th-date { width: 10%; text-align: center; }
+
+.td-cat {
+  vertical-align: middle;
 }
-.anonymous-user {
+.td-views {
+  text-align: center;
   color: #6c757d;
+  vertical-align: middle;
+}
+.td-likes {
+  text-align: center;
+  color: #dc3545;
+  vertical-align: middle;
 }
 .date-col {
+  text-align: center;
   color: #868e96;
+  vertical-align: middle;
 }
 
-/* 데이터 통신 상태 스타일 정의 */
+/* 🌟 [스타일 수정 완료] 제목 영역 플렉스 컨테이너 구성 */
+.title-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.title-text {
+  color: #333;
+  font-weight: 500;
+}
+.posts-table tr:hover .title-text {
+  color: #007bff;
+  text-decoration: underline;
+}
+.image-clip-icon {
+  font-size: 14px;
+}
+
+/* 🌟 미니 썸네일 사각형 프레임 레이아웃 */
+.thumbnail-wrapper {
+  width: 32px;
+  height: 32px;
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid #dee2e6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: #f8f9fa;
+}
+.list-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* 🌟 인라인 태그 뱃지 스타일 */
+.tag-list-inline {
+  display: flex;
+  gap: 4px;
+}
+.inline-tag {
+  font-size: 11px;
+  color: #007bff;
+  background-color: #e8f4ff;
+  padding: 2px 5px;
+  border-radius: 3px;
+}
+
 .loading-state, .error-state, .empty-state {
   padding: 30px;
   text-align: center;
@@ -349,7 +431,6 @@ const goToDetail = (id) => {
   color: #dc3545;
 }
 
-/* 카테고리 배지 디자인 */
 .badge {
   display: inline-block;
   padding: 4px 8px;
