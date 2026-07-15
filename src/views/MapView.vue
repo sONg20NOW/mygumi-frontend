@@ -60,10 +60,24 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
-import { useRoute, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
+import { useRoute, RouterLink } from 'vue-router';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '@/api/index.js';
+
+// 🌟 [배포판 마커 아이콘 404 해결 핵심] 
+// Vite 번들러가 빌드 시 Leaflet 에셋 이미지를 올바르게 추적하여 배포 주소로 매핑하도록 개별 import 처리합니다.
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+
+// 🌟 Leaflet의 기본 에셋 탐색 옵션을 삭제하고 Vite 정적 에셋 주소로 재매핑합니다.
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: markerIconRetina,
+  iconUrl: markerIcon,
+  shadowUrl: markerShadow,
+});
 
 const route = useRoute();
 
@@ -239,7 +253,6 @@ const getCategoryClass = (catName) => {
   height: calc(100vh - 180px);
 }
 
-/* 🌟 다른 컴포넌트들과 통일감 있는 브레드크럼 Flex 레이아웃 및 폰트 효과 지정 */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
