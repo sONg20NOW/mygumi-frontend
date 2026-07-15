@@ -1,8 +1,12 @@
 <template>
   <div class="map-view">
-    <div class="breadcrumb">홈 > 지역 지도 보기</div>
+    <div class="breadcrumb">
+      <RouterLink to="/" class="breadcrumb-link">홈</RouterLink>
+      <span class="divider"> &gt; </span>
+      <span class="current-page">지역 지도 보기</span>
+    </div>
 
-    <div class="map-container-layout">
+    <div class="map-container-layout" ref="mapContainer">
       <div class="sidebar">
         <h2 class="sidebar-title">📍 구미/경북 추천 핫플레이스</h2>
         
@@ -41,21 +45,28 @@
 
       <div class="map-wrapper">
         <div id="map" class="leaflet-map-element"></div>
+        
+        <button 
+          @click="toggleFullscreen" 
+          class="fullscreen-toggle-btn" 
+          :title="isFullscreen ? '전체화면 축소' : '전체화면 확대'"
+        >
+          {{ isFullscreen ? '📺 화면 축소' : '🖥️ 전체화면' }}
+        </button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, nextTick, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { useRoute, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import api from '@/api/index.js'; // ⭕ 공통 api 인스턴스 사용
+import api from '@/api/index.js';
 
 const route = useRoute();
 
-// Leaflet 지도 및 마커 인스턴스 관리
 let map = null;
 const markers = [];
 
@@ -66,7 +77,9 @@ const error = ref(null);
 const currentFilter = ref('all');
 const selectedPlaceId = ref(null);
 
-// 요구해주신 카테고리 옵션 구성 (전체보기 추가)
+const mapContainer = ref(null);
+const isFullscreen = ref(false);
+
 const categoryOptions = [
   { label: '전체', value: 'all' },
   { label: '🏞️ 관광지', value: '관광지' },
@@ -79,30 +92,22 @@ const categoryOptions = [
   { label: '🎉 축제', value: '축제' }
 ];
 
-// ⭐ [7번 API] 지도 마커 조회 (GET /api/map/markers)
 const fetchMarkers = async () => {
   try {
     isLoading.value = true;
     error.value = null;
 
     const params = {};
-    
-    // 필터링 카테고리가 'all'이 아닐 경우 파라미터 매핑
     if (currentFilter.value !== 'all') {
       params.category = currentFilter.value;
     }
-
-    // 라우터 쿼리에 검색 키워드가 존재할 경우 연동
     if (route.query.keyword) {
       params.keyword = route.query.keyword;
     }
 
     const response = await api.get('/api/map/markers', { params });
-    
     if (response.data && response.data.items) {
       places.value = response.data.items;
-      
-      // 데이터 바인딩 후 Leaflet 지도 마커 물리 동기화
       await nextTick();
       updateMarkers();
     }
@@ -114,28 +119,21 @@ const fetchMarkers = async () => {
   }
 };
 
-// 지도 초기화 함수
 const initMap = () => {
-  // 구미시청 근처 기준 좌표 및 줌 레벨 세팅
   map = L.map('map').setView([36.1194, 128.3443], 12);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
     attribution: '© OpenStreetMap contributors'
   }).addTo(map);
 
-  // 첫 데이터 로드
   fetchMarkers();
 };
 
-// 실시간 데이터 변경에 기반한 마커 레이아웃 갱신
 const updateMarkers = () => {
-  // 기존 마커 메모리 클리어 및 제거
   markers.forEach(m => map.removeLayer(m));
   markers.length = 0;
 
-  // API에서 가져온 실제 좌표 데이터를 기반으로 마커 바인딩
   places.value.forEach(place => {
-    // API 명세서 스펙 변수인 latitude, longitude 활용
     const marker = L.marker([place.latitude, place.longitude])
       .addTo(map)
       .bindPopup(`<b>${place.name}</b><br><span style="font-size:12px;">${place.address}</span>`);
@@ -148,14 +146,12 @@ const updateMarkers = () => {
   });
 };
 
-// 필터 버튼 제어 핸들러
 const filterType = (type) => {
   currentFilter.value = type;
   selectedPlaceId.value = null;
-  fetchMarkers(); // 필터 바뀔 때마다 서버에 새로 API 호출
+  fetchMarkers();
 };
 
-// 카드 목록 클릭 시 지도를 해당 좌표(latitude, longitude)로 부드럽게 평행이동
 const focusOnPlace = (place) => {
   selectedPlaceId.value = place.id;
   if (map) {
@@ -175,7 +171,29 @@ const focusOnPlace = (place) => {
   }
 };
 
-// 외부 경로 쿼리(챗봇 연동 등) 변경 실시간 감시
+const toggleFullscreen = () => {
+  if (!mapContainer.value) return;
+
+  if (!document.fullscreenElement) {
+    mapContainer.value.requestFullscreen()
+      .catch(err => {
+        console.error(`전체화면 모드 변경 실패: ${err.message}`);
+      });
+  } else {
+    document.exitFullscreen();
+  }
+};
+
+const handleFullscreenChange = () => {
+  isFullscreen.value = !!document.fullscreenElement;
+  
+  nextTick(() => {
+    if (map) {
+      map.invalidateSize();
+    }
+  });
+};
+
 watch(() => route.query, () => {
   fetchMarkers();
 }, { deep: true });
@@ -184,7 +202,8 @@ onMounted(async () => {
   await nextTick();
   initMap();
 
-  // 쿼리 파라미터(?place=명칭)를 넘겨받았을 때 마커 데이터 수신 후 자동 포커싱 처리
+  document.addEventListener('fullscreenchange', handleFullscreenChange);
+
   if (route.query.place) {
     await nextTick();
     const found = places.value.find(p => p.name.includes(route.query.place));
@@ -194,7 +213,10 @@ onMounted(async () => {
   }
 });
 
-// 카테고리별 CSS 뱃지 배정용 클래스 변환기
+onUnmounted(() => {
+  document.removeEventListener('fullscreenchange', handleFullscreenChange);
+});
+
 const getCategoryClass = (catName) => {
   switch (catName) {
     case '관광지': return 'tour';
@@ -217,8 +239,27 @@ const getCategoryClass = (catName) => {
   height: calc(100vh - 180px);
 }
 
+/* 🌟 다른 컴포넌트들과 통일감 있는 브레드크럼 Flex 레이아웃 및 폰트 효과 지정 */
 .breadcrumb {
   font-size: 14px;
+  color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.breadcrumb-link {
+  color: #007bff;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.breadcrumb-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+.divider {
+  color: #adb5bd;
+}
+.current-page {
   color: #6c757d;
 }
 
@@ -229,6 +270,13 @@ const getCategoryClass = (catName) => {
   border-radius: 8px;
   overflow: hidden;
   background-color: white;
+}
+
+.map-container-layout:fullscreen {
+  width: 100vw !important;
+  height: 100vh !important;
+  border-radius: 0;
+  border: none;
 }
 
 .sidebar {
@@ -247,7 +295,6 @@ const getCategoryClass = (catName) => {
   background-color: white;
 }
 
-/* 카테고리 개수가 늘어남에 따른 가로 스크롤 처리 및 터치 인터랙션 지원 */
 .filter-buttons {
   display: flex;
   padding: 10px;
@@ -256,10 +303,10 @@ const getCategoryClass = (catName) => {
   border-bottom: 1px solid #dee2e6;
   overflow-x: auto;
   white-space: nowrap;
-  scrollbar-width: thin; /* Firefox 스크롤바 얇게 */
+  scrollbar-width: thin;
 }
 .filter-buttons::-webkit-scrollbar {
-  height: 4px; /* 크롬 스크롤바 축소 */
+  height: 4px;
 }
 .filter-buttons::-webkit-scrollbar-thumb {
   background-color: #cbd5e1;
@@ -267,7 +314,7 @@ const getCategoryClass = (catName) => {
 }
 
 .filter-btn {
-  flex-shrink: 0; /* 스크롤 가능하도록 자동 줄어듦 방지 */
+  flex-shrink: 0;
   padding: 6px 12px;
   border: 1px solid #dee2e6;
   background-color: #f8f9fa;
@@ -321,7 +368,6 @@ const getCategoryClass = (catName) => {
   padding: 2px 6px;
   border-radius: 3px;
 }
-/* 다양한 신규 카테고리에 상응하는 컬러 매핑 추가 */
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.leisure { background-color: #e8f5e9; color: #1b5e20; }
@@ -348,7 +394,6 @@ const getCategoryClass = (catName) => {
   line-height: 1.4;
 }
 
-/* 통신 예외 상태 스타일 */
 .loading-state, .error-state, .empty-state {
   text-align: center;
   padding: 30px;
@@ -368,5 +413,27 @@ const getCategoryClass = (catName) => {
   width: 100%;
   height: 100%;
   z-index: 1;
+}
+
+.fullscreen-toggle-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 1000;
+  background-color: #ffffff;
+  color: #333333;
+  border: 1px solid #cbd5e1;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: all 0.2s ease;
+}
+.fullscreen-toggle-btn:hover {
+  background-color: #f8fafc;
+  border-color: #94a3b8;
+  transform: translateY(-1px);
 }
 </style>
