@@ -465,7 +465,7 @@ const toggleBookmark = (id) => {
 /* 카테고리 디자인 배지 */
 .badge {
   display: inline-block;
-  padding: 4px 8px;
+  padding: 0px 8px;
   border-radius: 4px;
   font-size: 12px;
   font-weight: 600;
