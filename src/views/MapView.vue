@@ -7,8 +7,19 @@
     </div>
 
     <div class="map-container-layout" ref="mapContainer">
-      <div class="sidebar">
-        <h2 class="sidebar-title">📍 구미/경북 추천 핫플레이스</h2>
+      
+      <div class="sidebar" :class="{ 'is-closed': !isSidebarOpen }">
+        <h2 class="sidebar-title">📍 구미/경북 핫플레이스</h2>
+        
+        <div class="sidebar-search-box">
+          <input 
+            v-model="sidebarSearchQuery"
+            type="text"
+            placeholder="이름이나 주소로 검색..."
+            class="sidebar-search-input"
+          />
+          <button v-if="sidebarSearchQuery" @click="clearSearch" class="search-clear-btn">✕</button>
+        </div>
         
         <div class="filter-buttons">
           <button 
@@ -24,11 +35,11 @@
         <div class="place-list">
           <div v-if="isLoading" class="loading-state">장소 정보를 불러오는 중입니다...</div>
           <div v-else-if="error" class="error-state">{{ error }}</div>
-          <div v-else-if="places.length === 0" class="empty-state">해당 카테고리의 장소가 없습니다.</div>
+          <div v-else-if="filteredPlaces.length === 0" class="empty-state">해당하는 장소가 없습니다.</div>
 
           <div 
             v-else
-            v-for="place in places" 
+            v-for="place in filteredPlaces" 
             :key="place.id" 
             @click="focusOnPlace(place)"
             :class="['place-card', { active: selectedPlaceId === place.id }]"
@@ -43,35 +54,42 @@
         </div>
       </div>
 
+      <button 
+        @click="toggleSidebar" 
+        class="sidebar-toggle-trigger" 
+        :class="{ 'is-sidebar-closed': !isSidebarOpen }"
+        :title="isSidebarOpen ? '사이드바 접기' : '사이드바 펼치기'"
+      >
+        {{ isSidebarOpen ? '◀' : '▶' }}
+      </button>
+
       <div class="map-wrapper">
         <div id="map" class="leaflet-map-element"></div>
-        
-        <button 
-          @click="toggleFullscreen" 
-          class="fullscreen-toggle-btn" 
-          :title="isFullscreen ? '전체화면 축소' : '전체화면 확대'"
-        >
-          {{ isFullscreen ? '📺 화면 축소' : '🖥️ 전체화면' }}
-        </button>
       </div>
+
+      <button 
+        @click="toggleFullscreen" 
+        class="fullscreen-toggle-btn" 
+        :title="isFullscreen ? '전체화면 축소' : '전체화면 확대'"
+      >
+        {{ isFullscreen ? '📺 화면 축소' : '🖥️ 전체화면' }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRoute, RouterLink } from 'vue-router';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import api from '@/api/index.js';
 
-// 🌟 [배포판 마커 아이콘 404 해결 핵심] 
-// Vite 번들러가 빌드 시 Leaflet 에셋 이미지를 올바르게 추적하여 배포 주소로 매핑하도록 개별 import 처리합니다.
+// [배포판 마커 아이콘 404 해결 로직]
 import markerIcon from 'leaflet/dist/images/marker-icon.png';
 import markerIconRetina from 'leaflet/dist/images/marker-icon-2x.png';
 import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 
-// 🌟 Leaflet의 기본 에셋 탐색 옵션을 삭제하고 Vite 정적 에셋 주소로 재매핑합니다.
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: markerIconRetina,
@@ -91,20 +109,34 @@ const error = ref(null);
 const currentFilter = ref('all');
 const selectedPlaceId = ref(null);
 
+const isSidebarOpen = ref(true);
 const mapContainer = ref(null);
 const isFullscreen = ref(false);
+
+const sidebarSearchQuery = ref('');
 
 const categoryOptions = [
   { label: '전체', value: 'all' },
   { label: '🏞️ 관광지', value: '관광지' },
+  { label: '🍕 음식점', value: '음식점' },
   { label: '🚴 레포츠', value: '레포츠' },
   { label: '🏛️ 문화시설', value: '문화시설' },
   { label: '🛍️ 쇼핑', value: '쇼핑' },
   { label: '🏨 숙박', value: '숙박' },
-  { label: '🗺️ 여행코스', value: '여행코스' },
-  { label: '🍕 음식점', value: '음식점' },
   { label: '🎉 축제', value: '축제' }
 ];
+
+// 사이드바 장소 리스트 실시간 필터링
+const filteredPlaces = computed(() => {
+  const query = sidebarSearchQuery.value.trim().toLowerCase();
+  if (!query) return places.value;
+
+  return places.value.filter(place => {
+    const matchName = place.name ? place.name.toLowerCase().includes(query) : false;
+    const matchAddress = place.address ? place.address.toLowerCase().includes(query) : false;
+    return matchName || matchAddress;
+  });
+});
 
 const fetchMarkers = async () => {
   try {
@@ -163,6 +195,7 @@ const updateMarkers = () => {
 const filterType = (type) => {
   currentFilter.value = type;
   selectedPlaceId.value = null;
+  sidebarSearchQuery.value = ''; 
   fetchMarkers();
 };
 
@@ -183,6 +216,20 @@ const focusOnPlace = (place) => {
       targetMarker.openPopup();
     }
   }
+};
+
+const toggleSidebar = () => {
+  isSidebarOpen.value = !isSidebarOpen.value;
+  
+  setTimeout(() => {
+    if (map) {
+      map.invalidateSize();
+    }
+  }, 310);
+};
+
+const clearSearch = () => {
+  sidebarSearchQuery.value = '';
 };
 
 const toggleFullscreen = () => {
@@ -213,8 +260,20 @@ watch(() => route.query, () => {
 }, { deep: true });
 
 onMounted(async () => {
+  // 모바일 화면일 때 기본적으로 왼쪽 사이드바 접힘 처리
+  if (window.innerWidth <= 768) {
+    isSidebarOpen.value = false;
+  }
+
   await nextTick();
   initMap();
+
+  // 🌟 [버그 해결 핵심] 모바일 초기 로딩 시 레이아웃 변화가 정착된 후 지도를 강제로 리사이즈 시켜 깨짐 현상을 해결합니다.
+  setTimeout(() => {
+    if (map) {
+      map.invalidateSize();
+    }
+  }, 350); // 사이드바 애니메이션 및 반응형 DOM 렌더링이 완전히 정착될 시간을 부여합니다.
 
   document.addEventListener('fullscreenchange', handleFullscreenChange);
 
@@ -283,6 +342,7 @@ const getCategoryClass = (catName) => {
   border-radius: 8px;
   overflow: hidden;
   background-color: white;
+  position: relative;
 }
 
 .map-container-layout:fullscreen {
@@ -298,6 +358,17 @@ const getCategoryClass = (catName) => {
   flex-direction: column;
   border-right: 1px solid #dee2e6;
   background-color: #f8f9fa;
+  transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s, opacity 0.2s;
+  overflow: hidden;
+  z-index: 5;
+}
+
+.sidebar.is-closed {
+  width: 0px;
+  min-width: 0px;
+  border-right: none;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sidebar-title {
@@ -307,6 +378,40 @@ const getCategoryClass = (catName) => {
   font-weight: bold;
   margin: 0;
   background-color: white;
+  white-space: nowrap;
+}
+
+.sidebar-search-box {
+  position: relative;
+  padding: 10px 15px;
+  background-color: white;
+  border-bottom: 1px solid #dee2e6;
+}
+.sidebar-search-input {
+  width: 100%;
+  padding: 8px 30px 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  font-size: 13px;
+  outline: none;
+}
+.sidebar-search-input:focus {
+  border-color: #007bff;
+}
+.search-clear-btn {
+  position: absolute;
+  right: 23px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 13px;
+  padding: 0;
+}
+.search-clear-btn:hover {
+  color: #64748b;
 }
 
 .filter-buttons {
@@ -350,6 +455,7 @@ const getCategoryClass = (catName) => {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  min-width: 330px; 
 }
 
 .place-card {
@@ -418,6 +524,37 @@ const getCategoryClass = (catName) => {
   color: #dc3545;
 }
 
+.sidebar-toggle-trigger {
+  position: absolute;
+  top: 50%;
+  left: 350px; 
+  transform: translateY(-50%);
+  z-index: 6; 
+  width: 20px;
+  height: 60px;
+  background-color: #ffffff;
+  border: 1px solid #cbd5e1;
+  border-left: none;
+  border-radius: 0 8px 8px 0;
+  cursor: pointer;
+  color: #475569;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.08);
+  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1), background-color 0.2s;
+  padding: 0;
+}
+.sidebar-toggle-trigger:hover {
+  background-color: #f1f5f9;
+  color: #0f172a;
+}
+.sidebar-toggle-trigger.is-sidebar-closed {
+  left: 0px;
+  border-left: 1px solid #cbd5e1;
+}
+
 .map-wrapper {
   flex: 1;
   position: relative;
@@ -432,8 +569,8 @@ const getCategoryClass = (catName) => {
 .fullscreen-toggle-btn {
   position: absolute;
   top: 12px;
-  right: 12px;
-  z-index: 1000;
+  right: 12px; 
+  z-index: 10;  
   background-color: #ffffff;
   color: #333333;
   border: 1px solid #cbd5e1;
@@ -449,5 +586,11 @@ const getCategoryClass = (catName) => {
   background-color: #f8fafc;
   border-color: #94a3b8;
   transform: translateY(-1px);
+}
+
+@media (max-width: 768px) {
+  .fullscreen-toggle-btn {
+    display: none !important; 
+  }
 }
 </style>
