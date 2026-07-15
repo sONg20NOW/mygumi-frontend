@@ -1,6 +1,12 @@
 <template>
   <div class="board-detail-view">
-    <div class="breadcrumb">홈 > 게시판 > 상세조회</div>
+    <div class="breadcrumb">
+      <RouterLink to="/" class="breadcrumb-link">홈</RouterLink>
+      <span class="divider"> &gt; </span>
+      <RouterLink to="/board" class="breadcrumb-link">게시판</RouterLink>
+      <span class="divider"> &gt; </span>
+      <span class="current-page">상세조회</span>
+    </div>
 
     <div v-if="isLoading" class="loading-state">게시글을 불러오는 중입니다...</div>
     <div v-else-if="error" class="error-state">{{ error }}</div>
@@ -73,7 +79,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRouter, useRoute } from 'vue-router';
+import { useRouter, useRoute, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
 import api from '@/api/index.js'; // ⭕ 공통 api 인스턴스 사용
 
 const router = useRouter();
@@ -158,16 +164,12 @@ const submitPassword = async () => {
   }
 
   if (modalMode.value === 'edit') {
-    // 💡 프론트엔드 내에서 수정 컴포넌트로 넘어갈 때 비밀번호 검증 단계는 
-    // 통상 수정 폼(/board/edit/:id) 내에서 실제 수정 PUT 요청을 보낼 때 원천 차단/검증하므로, 
-    // 여기서는 사용자가 입력한 비밀번호 정보를 수정한 페이지로 가지고 이동하도록 처리합니다.
     closeModal();
     router.push({
       path: `/board/edit/${post.value.id}`,
-      state: { verifyPassword: inputPassword.value } // 라우터 state 전달 활용
+      state: { verifyPassword: inputPassword.value }
     });
   } else if (modalMode.value === 'delete') {
-    // [5번 API] 삭제 API 바로 호출 검증
     try {
       isSubmitting.value = true;
       errorMessage.value = '';
@@ -181,7 +183,6 @@ const submitPassword = async () => {
       goToList();
     } catch (err) {
       console.error('게시글 삭제 실패:', err);
-      // 공통 오류 형식 중 비밀번호 오류 분기 처리
       if (err.response?.status === 403) {
         errorMessage.value = '비밀번호가 일치하지 않습니다.';
       } else {
@@ -222,10 +223,31 @@ const formatDate = (dateStr) => {
   flex-direction: column;
   gap: 20px;
 }
+
+/* 🌟 다른 뷰들과 일관성 있는 브레드크럼 레이아웃 구성 */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+.breadcrumb-link {
+  color: #007bff;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.breadcrumb-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+.divider {
+  color: #adb5bd;
+}
+.current-page {
+  color: #6c757d;
+}
+
 .post-container {
   background-color: white;
   border: 1px solid #dee2e6;
