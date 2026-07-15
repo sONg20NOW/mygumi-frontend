@@ -13,9 +13,9 @@
     </div>
 
     <div v-else class="form-container">
-      <h1 class="form-title">
+      <h2 class="form-title">
         {{ isEditMode ? '게시글 수정' : '게시글 작성' }}
-      </h1>
+      </h2>
 
       <form @submit.prevent="handleSubmit" class="write-form">
         <div class="form-group">
@@ -87,7 +87,7 @@
           />
           
           <div v-if="imagePreview" class="preview-container">
-            <img :src="imagePreview" alt="미리보기" class="preview-img" />
+            <img :src="displayPreviewUrl" alt="미리보기" class="preview-img" />
             <button 
               v-if="!isEditMode"
               type="button" 
@@ -115,8 +115,8 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
-import { useRoute, useRouter, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
+import { ref, reactive, computed, onMounted } from 'vue'; // 🌟 computed 추가 임포트
+import { useRoute, useRouter, RouterLink } from 'vue-router';
 import api from '@/api/index.js';
 
 const route = useRoute();
@@ -139,6 +139,24 @@ const formData = reactive({
   tags: []
 });
 
+// 🌟 [수정 완료] 수정 모드 진입 시 서버 주소로 내려받은 기존 이미지가 있을 경우 VITE_API_URL을 동적으로 안전 배합하는 연산 속성 선언
+const displayPreviewUrl = computed(() => {
+  if (!imagePreview.value) return '';
+  // 새로 파일을 교체하여 생성된 로컬 가상 주소(data:image 또는 blob:)이거나 외부 풀 URL이면 그대로 사용
+  if (
+    imagePreview.value.startsWith('data:') || 
+    imagePreview.value.startsWith('blob:') || 
+    imagePreview.value.startsWith('http://') || 
+    imagePreview.value.startsWith('https://')
+  ) {
+    return imagePreview.value;
+  }
+  const baseUrl = import.meta.env.VITE_API_URL || '';
+  const cleanBase = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+  const cleanPath = imagePreview.value.startsWith('/') ? imagePreview.value : `/${imagePreview.value}`;
+  return `${cleanBase}${cleanPath}`;
+});
+
 onMounted(() => {
   if (route.params.id) {
     isEditMode.value = true;
@@ -147,7 +165,6 @@ onMounted(() => {
   }
 });
 
-// [2번 API] 수정 시 기존 데이터 단건 조회 (GET /api/posts/{post_id})
 const fetchPostDetail = async () => {
   try {
     isInitialLoading.value = true;
@@ -202,7 +219,6 @@ const removeImage = () => {
   imagePreview.value = '';
 };
 
-// [3번 & 4번 API] 폼 전송
 const handleSubmit = async () => {
   if (tagInput.value.trim()) {
     handleTagInput();
@@ -212,7 +228,6 @@ const handleSubmit = async () => {
     isSubmitting.value = true;
 
     if (isEditMode.value) {
-      // [4번 API] 게시글 수정 (PUT /api/posts/{post_id})
       const updateData = {
         category: formData.category,
         title: formData.title,
@@ -225,7 +240,6 @@ const handleSubmit = async () => {
       alert('게시글이 성공적으로 수정되었습니다.');
       router.push(`/board/${postId.value}`);
     } else {
-      // [3번 API] 게시글 신규 등록 (POST /api/posts)
       const submitData = new FormData();
       submitData.append('category', formData.category);
       submitData.append('title', formData.title);
@@ -259,7 +273,6 @@ const handleSubmit = async () => {
   }
 };
 
-// [5번 API] 게시글 삭제
 const handleDelete = async () => {
   if (!formData.password) {
     alert('게시글 삭제를 위해 비밀번호를 입력해주세요.');
@@ -303,7 +316,6 @@ const goBack = () => {
   padding: 20px 10px;
 }
 
-/* 🌟 브레드크럼 스타일 고도화 */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
@@ -335,10 +347,11 @@ const goBack = () => {
   padding: 30px;
 }
 .form-title {
-  font-size: 22px;
+  font-weight: bold;
+  font-size: 26px;
   color: #212529;
   border-bottom: 2px solid #dee2e6;
-  padding-bottom: 15px;
+  padding-bottom: 20px;
   margin-bottom: 25px;
 }
 .write-form {
