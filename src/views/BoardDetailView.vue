@@ -19,7 +19,7 @@
         <div class="post-meta">
           <span class="meta-item">작성자: 익명</span>
           <span class="meta-item">작성일: {{ formatDate(post.createdAt) }}</span>
-          <span class="meta-item">👀 조회수: {{ post.viewCount }}</span>
+          <span class="meta-item">👁️ 조회수: {{ post.viewCount }}</span>
           <span class="meta-item">
             <button 
               ref="likeButtonRef"
@@ -86,6 +86,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
+import { toast } from 'vue3-toastify'; // 🌟 vue3-toastify 라이브러리 임포트
 import api from '@/api/index.js';
 
 const router = useRouter();
@@ -171,6 +172,7 @@ const createFloatingHeart = (buttonEl) => {
   }
 };
 
+// [9번 API] 게시글 좋아요 증가
 const handleLike = async () => {
   if (!post.value) return;
 
@@ -189,7 +191,8 @@ const handleLike = async () => {
     }
   } catch (err) {
     console.error('좋아요 반영 실패:', err);
-    alert('좋아요 처리에 실패했습니다.');
+    // 🌟 alert 대체: toast.error 사용
+    toast.error('좋아요 처리에 실패했습니다.');
   }
 };
 
@@ -229,7 +232,8 @@ const submitPassword = async () => {
         data: { password: inputPassword.value }
       });
 
-      alert('게시글이 삭제되었습니다.');
+      // 🌟 alert 대체: toast.success 사용
+      toast.success('게시글이 삭제되었습니다.');
       closeModal();
       goToList();
     } catch (err) {
@@ -358,20 +362,18 @@ const formatDate = (dateStr) => {
   gap: 20px;
 }
 
-/* 🌟 [수정 완료] 정렬 연속성 및 하단 배치를 고려한 여백 부여 */
 .attached-image-container {
   max-width: 100%;
   margin-top: 10px;
   border-radius: 8px;
   overflow: hidden;
-  align-self: flex-start; /* 좌측 정렬 유지 */
+  align-self: flex-start;
 }
 
-/* 🌟 [수정 완료] 세로가 긴 이미지가 와도 캘린더나 레이아웃을 해치지 않도록 최대 높이 제한 및 비율 자동화 지정 */
 .attached-image {
   max-width: 100%;
-  max-height: 500px;    /* 👈 최대 높이를 500px로 적절하게 고정 */
-  object-fit: contain;   /* 👈 비율 깨짐 없이 컨테이너 내부에 안착 */
+  max-height: 500px;    
+  object-fit: contain;   
   height: auto;
   display: block;
 }

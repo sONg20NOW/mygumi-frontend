@@ -13,9 +13,9 @@
     </div>
 
     <div v-else class="form-container">
-      <h2 class="form-title">
+      <h1 class="form-title">
         {{ isEditMode ? '게시글 수정' : '게시글 작성' }}
-      </h2>
+      </h1>
 
       <form @submit.prevent="handleSubmit" class="write-form">
         <div class="form-group">
@@ -115,8 +115,9 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'; // 🌟 computed 추가 임포트
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
+import { toast } from 'vue3-toastify'; // 🌟 vue3-toastify 모듈 임포트
 import api from '@/api/index.js';
 
 const route = useRoute();
@@ -139,10 +140,8 @@ const formData = reactive({
   tags: []
 });
 
-// 🌟 [수정 완료] 수정 모드 진입 시 서버 주소로 내려받은 기존 이미지가 있을 경우 VITE_API_URL을 동적으로 안전 배합하는 연산 속성 선언
 const displayPreviewUrl = computed(() => {
   if (!imagePreview.value) return '';
-  // 새로 파일을 교체하여 생성된 로컬 가상 주소(data:image 또는 blob:)이거나 외부 풀 URL이면 그대로 사용
   if (
     imagePreview.value.startsWith('data:') || 
     imagePreview.value.startsWith('blob:') || 
@@ -182,7 +181,8 @@ const fetchPostDetail = async () => {
     }
   } catch (err) {
     console.error('게시글 세부 정보 로드 실패:', err);
-    alert(err.response?.data?.message || '게시글을 불러오는 데 실패했습니다.');
+    // 🌟 alert 대체: toast.error 사용
+    toast.error(err.response?.data?.message || '게시글을 불러오는 데 실패했습니다.');
     router.push('/board');
   } finally {
     isInitialLoading.value = false;
@@ -237,7 +237,8 @@ const handleSubmit = async () => {
       };
 
       await api.put(`/api/posts/${postId.value}`, updateData);
-      alert('게시글이 성공적으로 수정되었습니다.');
+      // 🌟 alert 대체: toast.success 사용
+      toast.success('게시글이 수정되었습니다.');
       router.push(`/board/${postId.value}`);
     } else {
       const submitData = new FormData();
@@ -256,7 +257,8 @@ const handleSubmit = async () => {
       const response = await api.post('/api/posts', submitData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      alert('게시글이 성공적으로 등록되었습니다.');
+      // 🌟 alert 대체: toast.success 사용
+      toast.success('게시글이 등록되었습니다.');
       
       const newPostId = response.data?.id;
       if (newPostId) {
@@ -267,7 +269,8 @@ const handleSubmit = async () => {
     }
   } catch (err) {
     console.error('게시글 저장 실패:', err);
-    alert(err.response?.data?.message || '게시글 저장 중 오류가 발생했습니다.');
+    // 🌟 alert 대체: toast.error 사용
+    toast.error(err.response?.data?.message || '게시글 저장 중 오류가 발생했습니다.');
   } finally {
     isSubmitting.value = false;
   }
@@ -275,10 +278,12 @@ const handleSubmit = async () => {
 
 const handleDelete = async () => {
   if (!formData.password) {
-    alert('게시글 삭제를 위해 비밀번호를 입력해주세요.');
+    // 🌟 alert 대체: 중요 입력 누락은 toast.warning 사용
+    toast.warning('게시글 삭제를 위해 비밀번호를 입력해주세요.');
     return;
   }
 
+  // 브라우저 확인창 confirm은 본래 목적에 맞게 유지
   if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
     return;
   }
@@ -290,11 +295,13 @@ const handleDelete = async () => {
       data: { password: formData.password }
     });
 
-    alert('게시글이 삭제되었습니다.');
+    // 🌟 alert 대체: toast.success 사용
+    toast.success('게시글이 삭제되었습니다.');
     router.push('/board');
   } catch (err) {
     console.error('게시글 삭제 실패:', err);
-    alert(err.response?.data?.message || '삭제에 실패했습니다. 비밀번호를 확인해주세요.');
+    // 🌟 alert 대체: toast.error 사용
+    toast.error(err.response?.data?.message || '삭제에 실패했습니다. 비밀번호를 확인해주세요.');
   } finally {
     isSubmitting.value = false;
   }
