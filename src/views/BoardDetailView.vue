@@ -21,7 +21,12 @@
           <span class="meta-item">작성일: {{ formatDate(post.createdAt) }}</span>
           <span class="meta-item">👁️ 조회수: {{ post.viewCount }}</span>
           <span class="meta-item">
-            <button @click="handleLike" class="like-btn" :class="{ liked: isLiked }">
+            <button 
+              ref="likeButtonRef"
+              @click="handleLike" 
+              class="like-btn" 
+              :class="{ liked: isLiked, 'pop-animation': isPopAnimating }"
+            >
               ❤️ 좋아요 {{ post.likeCount }}
             </button>
           </span>
@@ -79,8 +84,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { useRouter, useRoute, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
-import api from '@/api/index.js'; // ⭕ 공통 api 인스턴스 사용
+import { useRouter, useRoute, RouterLink } from 'vue-router';
+import api from '@/api/index.js';
 
 const router = useRouter();
 const route = useRoute();
@@ -95,14 +100,17 @@ const inputPassword = ref('');
 const errorMessage = ref('');
 const isSubmitting = ref(false);
 
-// 좋아요는 브라우저 세션 동안 중복 클릭 인터페이스 토글 처리를 위한 클라이언트 로컬 상태 변수
 const isLiked = ref(false);
+
+// 🌟 애니메이션용 상태 변수 및 DOM 참조 관리
+const isPopAnimating = ref(false);
+const likeButtonRef = ref(null);
 
 onMounted(() => {
   fetchPostDetail();
 });
 
-// ⭐ [2번 API] 게시글 상세 조회 (GET /api/posts/{post_id})
+// [2번 API] 게시글 상세 조회
 const fetchPostDetail = async () => {
   try {
     isLoading.value = true;
@@ -121,18 +129,58 @@ const fetchPostDetail = async () => {
   }
 };
 
-// ⭐ [9번 API] 게시글 좋아요 증가 (POST /api/posts/{post_id}/likes)
+// 🌟 파핑 하트 요소 생성 헬퍼 함수
+const createFloatingHeart = (buttonEl) => {
+  if (!buttonEl) return;
+  
+  const rect = buttonEl.getBoundingClientRect();
+  
+  // 버튼 주위에서 튀어나올 하트 4개 임의 생성
+  for (let i = 0; i < 4; i++) {
+    const heart = document.createElement('span');
+    heart.innerText = '❤️';
+    heart.className = 'floating-heart-particle';
+    
+    // 버튼의 중앙 상단 부근을 타겟 좌표로 시작점 계산
+    const startX = window.scrollX + rect.left + rect.width / 2;
+    const startY = window.scrollY + rect.top;
+    
+    // 랜덤한 분산 궤적 값 설정
+    const moveX = (Math.random() - 0.5) * 60; // 좌우 분산 범위
+    const moveY = -(Math.random() * 40 + 40);   // 위로 솟구치는 범위
+    
+    heart.style.left = `${startX}px`;
+    heart.style.top = `${startY}px`;
+    heart.style.setProperty('--move-x', `${moveX}px`);
+    heart.style.setProperty('--move-y', `${moveY}px`);
+    
+    document.body.appendChild(heart);
+    
+    // 애니메이션이 끝나면 DOM에서 확실하게 제거 (메모리 누수 방지)
+    setTimeout(() => {
+      heart.remove();
+    }, 800);
+  }
+};
+
+// ⭐ [9번 API] 게시글 좋아요 증가
 const handleLike = async () => {
   if (!post.value) return;
 
   try {
-    // API 명세서 9번 스펙 호출
+    // 🌟 버튼 통통 튀는 애니메이션 실행 및 하트 파티 이펙트 트리거
+    isPopAnimating.value = true;
+    createFloatingHeart(likeButtonRef.value);
+    setTimeout(() => {
+      isPopAnimating.value = false;
+    }, 300);
+
     const response = await api.post(`/api/posts/${post.value.id}/likes`);
     
-    if (response.data && typeof response.data.likeCount === 'number') {
-      // 9번 API 응답 반환값 내부의 likeCount로 실시간 화면 업데이트 반영
-      post.value.likeCount = response.data.likeCount;
-      isLiked.value = true; // 임시 액티브 스타일 상태 설정
+    // 🌟 [수정 사항] response.data.likeCount에서 명세서 변경 스펙인 "like_count"로 필칭 매핑 변경
+    if (response.data && typeof response.data.like_count === 'number') {
+      post.value.likeCount = response.data.like_count;
+      isLiked.value = true;
     }
   } catch (err) {
     console.error('좋아요 반영 실패:', err);
@@ -144,7 +192,6 @@ const goToList = () => {
   router.push('/board');
 };
 
-// 비밀번호 모달 제어 함수군
 const openModal = (mode) => {
   modalMode.value = mode;
   isModalOpen.value = true;
@@ -156,7 +203,6 @@ const closeModal = () => {
   isModalOpen.value = false;
 };
 
-// 비밀번호 검증 후 분기 처리 (수정모드 이동 or [5번 API] 게시글 삭제 연동)
 const submitPassword = async () => {
   if (!inputPassword.value.trim()) {
     errorMessage.value = '비밀번호를 입력해 주세요.';
@@ -194,7 +240,6 @@ const submitPassword = async () => {
   }
 };
 
-// 유틸리티 매핑 함수 (한글 카테고리 CSS 바인딩 매핑)
 const getCategoryClass = (categoryName) => {
   switch (categoryName) {
     case '관광지': return 'tour';
@@ -204,7 +249,6 @@ const getCategoryClass = (categoryName) => {
   }
 };
 
-// 날짜 문자열 전처리 포맷 함수
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -224,7 +268,6 @@ const formatDate = (dateStr) => {
   gap: 20px;
 }
 
-/* 🌟 다른 뷰들과 일관성 있는 브레드크럼 레이아웃 구성 */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
@@ -271,7 +314,10 @@ const formatDate = (dateStr) => {
   gap: 15px;
   align-items: center;
 }
+
+/* 🌟 좋아요 버튼 및 통통 애니메이션 스타일 */
 .like-btn {
+  position: relative;
   background: none;
   border: 1px solid #ffcccb;
   color: #dc3545;
@@ -279,11 +325,27 @@ const formatDate = (dateStr) => {
   border-radius: 20px;
   cursor: pointer;
   font-weight: bold;
-  transition: all 0.2s ease;
+  transition: transform 0.1s ease, background-color 0.2s, color 0.2s;
 }
 .like-btn.liked {
   background-color: #dc3545;
   color: white;
+}
+.like-btn:hover {
+  transform: scale(1.05);
+}
+.like-btn:active {
+  transform: scale(0.95);
+}
+/* 클릭했을 때 살짝 확대됐다가 돌아오는 바운스 효과 */
+.like-btn.pop-animation {
+  animation: buttonBounce 0.3s ease-in-out;
+}
+
+@keyframes buttonBounce {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); }
+  100% { transform: scale(1.05); }
 }
 
 .post-body {
@@ -341,7 +403,6 @@ const formatDate = (dateStr) => {
 .delete-btn { background-color: #dc3545; color: white; }
 .list-btn { background-color: #6c757d; color: white; }
 
-/* 모달 스타일 */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
@@ -376,9 +437,8 @@ const formatDate = (dateStr) => {
   display: flex; justify-content: flex-end; gap: 8px;
 }
 .modal-submit-btn { padding: 8px 16px; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
-.modal-cancel-btn { padding: 8px 16px; background-color: #e9ecef; color: #495057; border: none; border-radius: 4px; cursor: pointer; }
+.modal-cancel-btn { padding: 8px 16px; background-color: #e9ecef; color: #495057; }
 
-/* 상태별 스타일 */
 .loading-state, .error-state {
   text-align: center;
   padding: 50px;
@@ -400,4 +460,29 @@ const formatDate = (dateStr) => {
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.festival { background-color: #f3e5f5; color: #4a148c; }
 .badge.default { background-color: #e2e8f0; color: #475569; }
+</style>
+
+<style>
+.floating-heart-particle {
+  position: absolute;
+  font-size: 16px;
+  pointer-events: none; /* 마우스 클릭 인터셉트 방지 */
+  animation: heartFloatUp 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+  z-index: 9999;
+}
+
+@keyframes heartFloatUp {
+  0% {
+    transform: translate(-50%, -50%) scale(0.5);
+    opacity: 1;
+  }
+  50% {
+    transform: translate(calc(-50% + var(--move-x) * 0.6), calc(-50% + var(--move-y) * 0.6)) scale(1.3);
+    opacity: 0.9;
+  }
+  100% {
+    transform: translate(calc(-50% + var(--move-x)), calc(-50% + var(--move-y))) scale(0.8);
+    opacity: 0;
+  }
+}
 </style>
