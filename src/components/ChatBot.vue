@@ -66,17 +66,16 @@
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
+import api from '@/api/index.js';
 
 const router = useRouter();
 
-// UI 상태값 [cite: 34]
 const isOpen = ref(false);
 const isMobile = ref(false);
 const isLoading = ref(false);
 const inputMessage = ref('');
 const messageContainer = ref(null);
 
-// 대화 히스토리 저장 상태 (RFP 필수 요구사항: 대화 히스토리 유지) [cite: 34]
 const messages = ref([
   {
     sender: 'assistant',
@@ -86,7 +85,6 @@ const messages = ref([
   }
 ]);
 
-// 모바일 해상도 판별 스크립트 (RFP 모바일 대응 요구사항 반영) [cite: 34, 131]
 const checkMobile = () => {
   isMobile.value = window.innerWidth <= 576;
 };
@@ -98,7 +96,6 @@ const toggleChat = () => {
   }
 };
 
-// 스크롤을 항상 아래로 밀어주는 편의 기능
 const scrollToBottom = async () => {
   await nextTick();
   if (messageContainer.value) {
@@ -115,7 +112,6 @@ onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
 });
 
-// 현재 시간을 예쁘게 포맷팅
 const getCurrentTime = () => {
   const now = new Date();
   let hours = now.getHours();
@@ -126,80 +122,91 @@ const getCurrentTime = () => {
   return `${ampm} ${hours}:${minutes}`;
 };
 
-// 💬 챗봇 질문 전송 시뮬레이션 로직 [cite: 31, 32]
+// ⭐ [6번 API] 챗봇 질문 전송 실시간 연동 (POST /api/chat)
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || isLoading.value) return;
 
   const userText = inputMessage.value;
   inputMessage.value = '';
 
-  // 1. 사용자 말풍선 추가
+  // 1. 사용자 말풍선 UI 추가
   messages.value.push({
     sender: 'user',
     text: userText,
     time: getCurrentTime()
   });
+
+  // 2. 사용자가 보낸 말풍선이 렌더링된 후 1차 스크롤 하단 이동
   await scrollToBottom();
 
-  // 로딩 상태 시작
+  // 🌟 3. 챗봇 응답 대기 상태 활성화 (`isLoading = true`)
   isLoading.value = true;
+  
+  // 🌟 4. 대기 말풍선(v-if="isLoading")이 DOM에 그려진 '직후' 완전히 밑으로 내려가 보이도록 2차 스크롤 하단 이동 보장
+  await scrollToBottom();
 
   try {
-    // API 가상 시뮬레이션 대기 (1초)
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    const rawHistory = messages.value
+      .slice(1, -1)
+      .map(msg => ({
+        role: msg.sender,
+        content: msg.text
+      }));
 
-    // 사용자 발화 키워드에 따른 목데이터 분기 [cite: 32]
-    let mockAnswer = "구미와 경북 권역의 다양한 명소, 맛집, 축제 정보에 대해 안내해 드릴 수 있습니다. 찾으시는 정보가 있으신가요?";
-    let mockRefs = [];
+    const historyPayload = rawHistory.slice(-10);
 
-    if (userText.includes('관광지') || userText.includes('금오산') || userText.includes('가족')) {
-      mockAnswer = "가족과 함께 방문하기 좋은 대표적인 장소로 금오산 도립공원을 추천합니다. 둘레길 산책 코스가 아주 잘 되어 있습니다.";
-      mockRefs = [
-        { type: 'place', id: 'place-101', title: '금오산 도립공원' },
-        { type: 'post', id: 5, title: '이번 주말에 금오산 둘레길 다녀왔는데 단풍 장난 아니네요!' }
-      ];
-    } else if (userText.includes('맛집') || userText.includes('음식')) {
-      mockAnswer = "구미역 뒤편(금리단길) 골목에 숨은 분위기 좋은 맛집들과 전통적인 국밥집들이 인기가 많습니다.";
-      mockRefs = [
-        { type: 'place', id: 'place-102', title: '구미역 뒤쪽 뇨끼 맛집' },
-        { type: 'post', id: 4, title: '구미역 뒤쪽에 진짜 숨은 뇨끼 맛집 공유합니다.' }
-      ];
-    } else if (userText.includes('축제') || userText.includes('행사')) {
-      mockAnswer = "올여름 구미와 경북 지역에서 개최 예정인 축제 및 야시장 정보입니다. 일정에 참고해 보세요!";
-      mockRefs = [
-        { type: 'post', id: 6, title: '2026 경북 여름 축제 일정 총정리 캘린더 공유' }
-      ];
+    const requestBody = {
+      message: userText,
+      history: historyPayload
+    };
+
+    const response = await api.post('/api/chat', requestBody, {
+      timeout: 20000
+    });
+
+    let answerText = '';
+    let references = [];
+
+    if (response.data) {
+      answerText = response.data.answer;
+      references = response.data.references || [];
     }
 
-    // 2. 어시스턴트 답변 추가
+    // 5. 어시스턴트 실제 답변 추가
     messages.value.push({
       sender: 'assistant',
-      text: mockAnswer,
+      text: answerText,
       time: getCurrentTime(),
-      references: mockRefs
+      references: references
     });
 
   } catch (error) {
-    console.error(error);
+    console.error('챗봇 답변 생성 실패:', error);
+    
+    let fallbackMessage = error.response?.data?.message;
+    if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+      fallbackMessage = '답변 생성 시간이 초과되었습니다. 잠시 후 다시 질문해 주세요.';
+    } else if (!fallbackMessage) {
+      fallbackMessage = '서비스 연결 상태가 원활하지 않습니다. 잠시 후 다시 시도해 주세요.';
+    }
+    
     messages.value.push({
       sender: 'assistant',
-      text: '서비스 연결 상태가 원활하지 않습니다. 잠시 후 다시 시도해 주세요.',
+      text: fallbackMessage,
       time: getCurrentTime()
     });
   } finally {
+    // 로딩 비활성화 및 최종 스크롤 하단 정렬
     isLoading.value = false;
     await scrollToBottom();
   }
 };
 
-// 📍 참고 정보 카드 클릭 시 라우터 전환 처리 핸들러
 const handleReferenceClick = (refItem) => {
-  isOpen.value = false; // 대화창 닫기
+  isOpen.value = false;
   if (refItem.type === 'post') {
-    // 상세 게시글로 라우터 이동
     router.push(`/board/${refItem.id}`);
   } else if (refItem.type === 'place') {
-    // 지도 탭으로 이동
     router.push('/map');
   }
 };
@@ -213,7 +220,6 @@ const handleReferenceClick = (refItem) => {
   z-index: 999;
 }
 
-/* 플로팅 둥근 버튼 [cite: 74, 130] */
 .chat-trigger-btn {
   width: 60px;
   height: 60px;
@@ -233,7 +239,6 @@ const handleReferenceClick = (refItem) => {
   transform: scale(1.05);
 }
 
-/* 챗봇 대화창 레이아웃 [cite: 131] */
 .chat-window {
   width: 360px;
   height: 500px;
@@ -246,7 +251,6 @@ const handleReferenceClick = (refItem) => {
   border: 1px solid #e9ecef;
 }
 
-/* 📱 모바일 전체 화면 스타일 [cite: 131] */
 .chat-window.is-mobile-fullscreen {
   position: fixed;
   top: 0;
@@ -285,7 +289,6 @@ const handleReferenceClick = (refItem) => {
   cursor: pointer;
 }
 
-/* 스크롤 가능한 메시지창 */
 .chat-messages {
   flex-grow: 1;
   padding: 15px;
@@ -302,7 +305,6 @@ const handleReferenceClick = (refItem) => {
   max-width: 80%;
 }
 
-/* 유저 말풍선 우측 정렬 */
 .message-wrapper.user {
   align-self: flex-end;
   align-items: flex-end;
@@ -313,7 +315,6 @@ const handleReferenceClick = (refItem) => {
   border-radius: 12px 12px 0 12px;
 }
 
-/* 봇 말풍선 좌측 정렬 */
 .message-wrapper.assistant {
   align-self: flex-start;
   align-items: flex-start;
@@ -329,19 +330,22 @@ const handleReferenceClick = (refItem) => {
   padding: 12px 14px;
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
+
+/* 🌟 1. 대화 상자 텍스트 왼쪽 정렬 고정 */
 .message-text {
   font-size: 14px;
   line-height: 1.45;
   margin: 0;
   white-space: pre-line;
+  text-align: left; /* 👈 사용자와 어시스턴트 글 배치 방향 모두 좌측 정렬 */
 }
+
 .message-time {
   font-size: 11px;
   color: #adb5bd;
   margin-top: 4px;
 }
 
-/* 📌 참고 정보(references) 카드 디자인 */
 .references-container {
   margin-top: 10px;
   border-top: 1px dashed #dee2e6;
@@ -388,7 +392,6 @@ const handleReferenceClick = (refItem) => {
 .ref-badge.place { background-color: #e2f0d9; color: #385723; }
 .ref-badge.post { background-color: #fff2cc; color: #7f6000; }
 
-/* 폼 제어 영역 */
 .chat-input-form {
   display: flex;
   border-top: 1px solid #e9ecef;
@@ -423,7 +426,6 @@ const handleReferenceClick = (refItem) => {
   cursor: not-allowed;
 }
 
-/* 대기 로딩 점 애니메이션 */
 .loading-bubble {
   display: flex;
   gap: 4px;
