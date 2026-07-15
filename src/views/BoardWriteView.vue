@@ -1,7 +1,11 @@
 <template>
   <div class="board-write-view">
     <div class="breadcrumb">
-      홈 > 게시판 > {{ isEditMode ? '글수정' : '글쓰기' }}
+      <RouterLink to="/" class="breadcrumb-link">홈</RouterLink>
+      <span class="divider"> &gt; </span>
+      <RouterLink to="/board" class="breadcrumb-link">게시판</RouterLink>
+      <span class="divider"> &gt; </span>
+      <span class="current-page">{{ isEditMode ? '글수정' : '글쓰기' }}</span>
     </div>
 
     <div v-if="isInitialLoading" class="loading-state">
@@ -67,12 +71,34 @@
         </div>
 
         <div class="form-group">
-          <label class="form-label">썸네일 이미지</label>
-          <input type="file" accept="image/*" class="file-input" @change="handleFileChange" />
+          <div class="label-wrapper">
+            <label class="form-label">썸네일 이미지</label>
+            <span v-if="isEditMode" class="info-text-small">
+              (※ 수정 시 이미지 변경은 불가능합니다.)
+            </span>
+          </div>
+          
+          <input 
+            v-if="!isEditMode"
+            type="file" 
+            accept="image/*" 
+            class="file-input" 
+            @change="handleFileChange" 
+          />
           
           <div v-if="imagePreview" class="preview-container">
             <img :src="imagePreview" alt="미리보기" class="preview-img" />
-            <button type="button" class="remove-img-btn" @click="removeImage">이미지 제거</button>
+            <button 
+              v-if="!isEditMode"
+              type="button" 
+              class="remove-img-btn" 
+              @click="removeImage"
+            >
+              이미지 제거
+            </button>
+          </div>
+          <div v-else-if="isEditMode" class="no-image-text">
+            등록된 이미지가 없습니다.
           </div>
         </div>
 
@@ -90,7 +116,7 @@
 
 <script setup>
 import { ref, reactive, onMounted } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, RouterLink } from 'vue-router'; // 🌟 RouterLink 추가 임포트
 import api from '@/api/index.js';
 
 const route = useRoute();
@@ -186,22 +212,20 @@ const handleSubmit = async () => {
     isSubmitting.value = true;
 
     if (isEditMode.value) {
-      // ⭐ [4번 API] 게시글 수정 (PUT /api/posts/{post_id})
-      // 명세서 규격상 application/json 형식을 따르며, tags는 문자열 배열 형태로 그대로 보냅니다.
+      // [4번 API] 게시글 수정 (PUT /api/posts/{post_id})
       const updateData = {
         category: formData.category,
         title: formData.title,
         content: formData.content,
         password: formData.password,
-        tags: formData.tags // 🌟 문자열 배열로 전송
+        tags: formData.tags
       };
 
       await api.put(`/api/posts/${postId.value}`, updateData);
       alert('게시글이 성공적으로 수정되었습니다.');
       router.push(`/board/${postId.value}`);
     } else {
-      // ⭐ [3번 API] 게시글 신규 등록 (POST /api/posts)
-      // multipart/form-data 형식을 따르며, tags는 쉼표 구분 문자열 형태로 보냅니다.
+      // [3번 API] 게시글 신규 등록 (POST /api/posts)
       const submitData = new FormData();
       submitData.append('category', formData.category);
       submitData.append('title', formData.title);
@@ -209,10 +233,10 @@ const handleSubmit = async () => {
       submitData.append('password', formData.password);
       
       const tagsString = formData.tags.join(',');
-      submitData.append('tags', tagsString); // 🌟 쉼표로 구분된 단일 문자열로 전송
+      submitData.append('tags', tagsString);
 
       if (selectedFile.value) {
-        submitData.append('imageUrl', selectedFile.value);
+        submitData.append('image', selectedFile.value);
       }
 
       const response = await api.post('/api/posts', submitData, {
@@ -273,17 +297,37 @@ const goBack = () => {
 </script>
 
 <style scoped>
-/* 기존 스타일 그대로 유지 */
 .board-write-view {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px 10px;
 }
+
+/* 🌟 브레드크럼 스타일 고도화 */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
+.breadcrumb-link {
+  color: #007bff;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.breadcrumb-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+.divider {
+  color: #adb5bd;
+}
+.current-page {
+  color: #6c757d;
+}
+
 .form-container {
   background: white;
   border: 1px solid #dee2e6;
@@ -312,6 +356,18 @@ const goBack = () => {
   font-weight: bold;
   color: #495057;
 }
+
+.label-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.info-text-small {
+  font-size: 12px;
+  color: #ef4444;
+  font-weight: 500;
+}
+
 .form-select, .form-input, .form-textarea {
   width: 100%;
   padding: 10px 12px;
@@ -378,6 +434,11 @@ const goBack = () => {
 }
 .remove-img-btn:hover {
   background-color: #c82333;
+}
+.no-image-text {
+  font-size: 13px;
+  color: #868e96;
+  padding: 5px 0;
 }
 
 .form-actions {
