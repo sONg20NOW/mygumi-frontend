@@ -1,6 +1,10 @@
 <template>
   <div class="board-list-view">
-    <div class="breadcrumb">홈 > 게시판</div>
+    <div class="breadcrumb">
+      <RouterLink to="/" class="breadcrumb-link">홈</RouterLink>
+      <span class="divider"> &gt; </span>
+      <span class="current-page">게시판</span>
+    </div>
 
     <div class="category-tabs">
       <button 
@@ -163,9 +167,6 @@ const fetchPosts = async () => {
       currentPage.value = response.data.page || 1;
       pageSize.value = response.data.size || 10;
       
-      // 전체 페이지 수 산출 (백엔드 총 개수가 응답에 온다면 변환 가능, 명세서 규격에 맞게 유연하게 처리)
-      // 명세서 예시 응답 구조에 총 페이지(totalPages) 등이 포함되어 있다고 가정하거나 
-      // 예시 스펙을 기반으로 백엔드에서 반환하는 totalPages 값을 할당합니다.
       totalPages.value = response.data.totalPages || Math.ceil((response.data.total || 10) / pageSize.value) || 1;
     }
   } catch (err) {
@@ -265,10 +266,29 @@ const toggleBookmark = (id) => {
   padding: 20px 10px;
 }
 
+/* 🌟 브레드크럼 스타일 고도화 (BoardWriteView 구조와 통일) */
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
   margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.breadcrumb-link {
+  color: #007bff;
+  text-decoration: none;
+  transition: color 0.15s ease;
+}
+.breadcrumb-link:hover {
+  color: #0056b3;
+  text-decoration: underline;
+}
+.divider {
+  color: #adb5bd;
+}
+.current-page {
+  color: #6c757d;
 }
 
 /* 카테고리 탭 디자인 */
