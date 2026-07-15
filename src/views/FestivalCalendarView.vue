@@ -1,21 +1,28 @@
 <template>
   <div class="calendar-view">
-    <div class="breadcrumb">홈 > 축제 캘린더</div>
+    <div class="breadcrumb">
+      <RouterLink to="/" class="breadcrumb-link">홈</RouterLink>
+      <span class="divider"> &gt; </span>
+      <span class="current-page">축제 캘린더</span>
+    </div>
     
     <div class="calendar-container">
       <div class="calendar-header">
-        <button @click="prevMonth" class="nav-btn">&lt;</button>
+        <button @click="prevMonth" class="nav-btn" :disabled="isLoading">&lt;</button>
         <h2 class="calendar-title">
           {{ currentYear }}년 {{ currentMonth + 1 }}월 축제 일정
         </h2>
-        <button @click="nextMonth" class="nav-btn">&gt;</button>
+        <button @click="nextMonth" class="nav-btn" :disabled="isLoading">&gt;</button>
       </div>
 
       <div class="weekdays">
         <div v-for="day in weekDays" :key="day" class="weekday">{{ day }}</div>
       </div>
 
-      <div class="days-grid">
+      <div v-if="isLoading" class="loading-state">축제 일정을 불러오는 중입니다...</div>
+      <div v-else-if="error" class="error-state">{{ error }}</div>
+
+      <div v-else class="days-grid">
         <div v-for="blank in blankDays" :key="'blank-' + blank" class="day empty"></div>
         
         <div v-for="day in daysInMonth" :key="day" class="day">
@@ -48,16 +55,15 @@
         <div class="modal-body">
           <div class="info-group">
             <span class="info-label">📅 기간</span>
-            <span class="info-value">{{ selectedEvent.dateRange }}</span>
+            <span class="info-value">
+              {{ selectedEvent.start }}{{ selectedEvent.end ? ' ~ ' + selectedEvent.end : '' }}
+            </span>
           </div>
           <div class="info-group">
             <span class="info-label">📍 장소</span>
-            <span class="info-value">{{ selectedEvent.place }}</span>
+            <span class="info-value place-value">{{ selectedEvent.address || '장소 정보 없음' }}</span>
           </div>
-          <div class="info-desc-box">
-            <p class="info-desc-text">{{ selectedEvent.desc }}</p>
           </div>
-        </div>
         <div class="modal-footer">
           <button @click="selectedEvent = null" class="modal-close-action-btn">확인</button>
         </div>
@@ -67,54 +73,69 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
+import { RouterLink } from 'vue-router';
+import api from '@/api/index.js';
 
 const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
 
-// 2026년 7월 고정 기준 (프로젝트 마감 시점 연월)
 const currentYear = ref(2026);
-const currentMonth = ref(6); // 0부터 시작하므로 6은 7월을 의미합니다.
+const currentMonth = ref(6);
 
+const festivalEvents = ref([]);
+const isLoading = ref(true);
+const error = ref(null);
 const selectedEvent = ref(null);
 
-// 구미/경북 권역 가상 축제 일정 목데이터 (디자인적 구분을 위해 테마 색상 탑재)
-const festivalEvents = ref([
-  {
-    id: 1,
-    title: '구미 푸드페스티벌',
-    startDay: 3,
-    endDay: 5,
-    dateRange: '2026.07.03 ~ 2026.07.05',
-    place: '구미 송정 복개천 일원',
-    color: '#e3f2fd',
-    textColor: '#0d47a1',
-    desc: '구미의 다양한 먹거리와 로컬 푸드를 한자리에서 맛보고 즐길 수 있는 대표 먹거리 축제입니다. 버스킹 공연과 다양한 이벤트 부스가 준비되어 있습니다.'
-  },
-  {
-    id: 2,
-    title: '경북 풍기인삼축제',
-    startDay: 15,
-    endDay: 18,
-    dateRange: '2026.07.15 ~ 2026.07.18',
-    place: '영주시 풍기읍 남원천변',
-    color: '#fff3e0',
-    textColor: '#e65100',
-    desc: '세계적인 효능을 자랑하는 풍기인삼을 직접 캐보고 시중보다 저렴하게 구매할 수 있는 전통 웰빙 건강 축제입니다.'
-  },
-  {
-    id: 3,
-    title: '금오산 잔도 야간 트래킹',
-    startDay: 24,
-    endDay: 25,
-    dateRange: '2026.07.24 ~ 2026.07.25',
-    place: '구미 금오산 잔도길 일원',
-    color: '#f3e5f5',
-    textColor: '#4a148c',
-    desc: '은은한 경관 조명이 켜진 금오산 잔도길을 함께 걸으며 구미의 아름다운 밤하늘과 호수 야경을 눈에 담는 힐링 프로그램입니다.'
-  }
-]);
+const themeColors = [
+  { color: '#e3f2fd', textColor: '#0d47a1' },
+  { color: '#fff3e0', textColor: '#e65100' },
+  { color: '#f3e5f5', textColor: '#4a148c' },
+  { color: '#e8f5e9', textColor: '#1b5e20' }
+];
 
-// 달력 날짜 계산 연산
+const fetchFestivals = async () => {
+  try {
+    isLoading.value = true;
+    error.value = null;
+
+    const startIso = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-01`;
+    const nextMonthObj = new Date(currentYear.value, currentMonth.value + 1, 1);
+    const endIso = `${nextMonthObj.getFullYear()}-${String(nextMonthObj.getMonth() + 1).padStart(2, '0')}-01`;
+
+    const response = await api.get('/api/festivals', {
+      params: {
+        start: startIso,
+        end: endIso
+      }
+    });
+
+    if (Array.isArray(response.data)) {
+      festivalEvents.value = response.data.map((event, idx) => {
+        const theme = themeColors[idx % themeColors.length];
+        return {
+          ...event,
+          color: theme.color,
+          textColor: theme.textColor
+        };
+      });
+    }
+  } catch (err) {
+    console.error('축제 일정 로드 실패:', err);
+    error.value = err.response?.data?.message || '축제 일정을 불러오는 데 실패했습니다.';
+  } finally {
+    isLoading.value = false;
+  }
+};
+
+onMounted(() => {
+  fetchFestivals();
+});
+
+watch([currentYear, currentMonth], () => {
+  fetchFestivals();
+});
+
 const daysInMonth = computed(() => {
   return new Date(currentYear.value, currentMonth.value + 1, 0).getDate();
 });
@@ -124,7 +145,6 @@ const blankDays = computed(() => {
   return firstDay;
 });
 
-// 이전 달 이동
 const prevMonth = () => {
   if (currentMonth.value === 0) {
     currentMonth.value = 11;
@@ -134,7 +154,6 @@ const prevMonth = () => {
   }
 };
 
-// 다음 달 이동
 const nextMonth = () => {
   if (currentMonth.value === 11) {
     currentMonth.value = 0;
@@ -144,14 +163,22 @@ const nextMonth = () => {
   }
 };
 
-// 특정 날짜에 매칭되는 이벤트 필터링
 const getEventsForDay = (day) => {
+  const currentStr = `${currentYear.value}-${String(currentMonth.value + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  const currentDate = new Date(currentStr);
+
   return festivalEvents.value.filter(event => {
-    return day >= event.startDay && day <= event.endDay;
+    const startDate = new Date(event.start);
+    const endDate = event.end ? new Date(event.end) : new Date(event.start);
+
+    if (event.end) {
+      return currentDate >= startDate && currentDate < endDate;
+    } else {
+      return currentDate.getTime() === startDate.getTime();
+    }
   });
 };
 
-// 오늘 날짜 하이라이팅을 위한 체크 함수
 const isToday = (day) => {
   const today = new Date();
   return today.getFullYear() === currentYear.value &&
@@ -175,9 +202,25 @@ const showEventDetail = (event) => {
 .breadcrumb {
   font-size: 14px;
   color: #6c757d;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.breadcrumb-link {
+  color: #007bff;
+  text-decoration: none;
+}
+.breadcrumb-link:hover {
+  text-decoration: underline;
+  color: #0056b3;
+}
+.divider {
+  color: #adb5bd;
+}
+.current-page {
+  color: #6c757d;
 }
 
-/* 달력 카드 감싸는 영역 */
 .calendar-container {
   background-color: white;
   border: 1px solid #dee2e6;
@@ -186,7 +229,6 @@ const showEventDetail = (event) => {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
-/* 컨트롤러 헤더 */
 .calendar-header {
   display: flex;
   justify-content: space-between;
@@ -211,12 +253,15 @@ const showEventDetail = (event) => {
   font-weight: bold;
   transition: all 0.15s;
 }
-.nav-btn:hover {
+.nav-btn:hover:not(:disabled) {
   background-color: #e9ecef;
   border-color: #adb5bd;
 }
+.nav-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
 
-/* 요일 구분선 */
 .weekdays {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -230,10 +275,9 @@ const showEventDetail = (event) => {
 .weekday {
   color: #495057;
 }
-.weekday:first-child { color: #dc3545; } /* 일요일 빨간색 */
-.weekday:last-child { color: #007bff; }  /* 토요일 파란색 */
+.weekday:first-child { color: #dc3545; }
+.weekday:last-child { color: #007bff; }
 
-/* 실제 그리드판 */
 .days-grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
@@ -250,6 +294,7 @@ const showEventDetail = (event) => {
   flex-direction: column;
   gap: 6px;
   background-color: #ffffff;
+  min-width: 0; 
 }
 
 .day.empty {
@@ -272,22 +317,24 @@ const showEventDetail = (event) => {
   text-align: center;
 }
 
-/* 오늘 날짜 하이라이팅 원형 스타일 */
 .day-number.today {
   background-color: #007bff;
   color: white;
   border-radius: 50%;
 }
 
-/* 이벤트 스트립 리스트 */
 .event-list {
   display: flex;
   flex-direction: column;
   gap: 4px;
   overflow: hidden;
+  width: 100%;
 }
 
 .event-tag {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
   font-size: 11px;
   padding: 4px 6px;
   border-radius: 4px;
@@ -304,17 +351,21 @@ const showEventDetail = (event) => {
   opacity: 0.9;
 }
 
-/* 상세 팝업 모달 스타일 */
+.loading-state, .error-state {
+  text-align: center;
+  padding: 50px;
+  color: #6c757d;
+  font-size: 14px;
+}
+.error-state {
+  color: #dc3545;
+}
+
 .modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  top: 0; left: 0; width: 100vw; height: 100vh;
   background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  justify-content: center;
-  align-items: center;
+  display: flex; justify-content: center; align-items: center;
   z-index: 2000;
 }
 
@@ -364,12 +415,14 @@ const showEventDetail = (event) => {
 .info-group {
   display: flex;
   font-size: 14px;
+  align-items: flex-start; /* 🌟 장소가 길어져서 개행될 때 라벨(📍 장소)이 상단에 고정되도록 변경 */
 }
 
 .info-label {
   width: 70px;
   font-weight: bold;
   color: #868e96;
+  flex-shrink: 0; /* 🌟 텍스트 가로 공간 부족 시 라벨 너비가 좁아지지 않도록 고정 */
 }
 
 .info-value {
@@ -377,19 +430,12 @@ const showEventDetail = (event) => {
   font-weight: 500;
 }
 
-.info-desc-box {
-  background-color: #f8f9fa;
-  border-radius: 6px;
-  padding: 15px;
-  border: 1px solid #e9ecef;
-}
-
-.info-desc-text {
-  font-size: 14px;
-  line-height: 1.6;
-  color: #495057;
-  margin: 0;
-  white-space: pre-wrap;
+/* 🌟 장소 텍스트 전용 스타일: 가로 폭 한계 도달 시 왼쪽 정렬로 줄바꿈 처리 */
+.place-value {
+  flex-grow: 1;
+  text-align: left;        /* 👈 왼쪽 정렬 보장 */
+  white-space: normal;     /* 👈 연속 공백/줄바꿈 규칙 기본화 */
+  word-break: break-all;   /* 👈 경계 영역 도달 시 문자 단위 개행 허용 */
 }
 
 .modal-footer {
