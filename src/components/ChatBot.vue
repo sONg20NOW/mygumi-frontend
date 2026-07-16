@@ -181,7 +181,7 @@ const sendMessage = async () => {
     };
 
     const response = await api.post('/api/chat', requestBody, {
-      timeout: 20000
+      timeout: 40000
     });
 
     let answerText = '';
