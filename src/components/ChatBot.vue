@@ -4,7 +4,12 @@
       💬
     </button>
 
-    <div v-else class="chat-window" :class="{ 'is-mobile-fullscreen': isMobile }">
+    <div 
+      v-else 
+      class="chat-window" 
+      :class="{ 'is-mobile-fullscreen': isMobile }"
+      @touchmove.stop
+    >
       <div class="chat-header">
         <div class="header-title">
           <span class="bot-icon">🤖</span>
@@ -54,6 +59,7 @@
           placeholder="질문 내용을 입력하세요..." 
           class="chat-input"
           :disabled="isLoading"
+          @focus="handleInputFocus"
         />
         <button type="submit" class="send-btn" :disabled="isLoading || !inputMessage.trim()">
           전송
@@ -64,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick } from 'vue';
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'; // 🌟 watch 추가
 import { useRouter } from 'vue-router';
 import api from '@/api/index.js';
 
@@ -86,8 +92,20 @@ const messages = ref([
 ]);
 
 const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 576;
+  isMobile.value = window.innerWidth <= 768; // 🌟 모바일 해상도 감지 기준을 768px 헤더 스펙과 통일화 보정
 };
+
+// 🌟 [수정 사항 2 - Body Scroll Lock 구현]
+// 모바일 화면에서 챗봇 창이 열리면 뒷페이지 본문 스크롤을 강제 비활성화하여 레이아웃 흔들림을 원천 제거합니다.
+watch([isOpen, isMobile], ([open, mobile]) => {
+  if (open && mobile) {
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+  } else {
+    document.body.style.overflow = '';
+    document.body.style.touchAction = '';
+  }
+});
 
 const toggleChat = () => {
   isOpen.value = !isOpen.value;
@@ -103,6 +121,18 @@ const scrollToBottom = async () => {
   }
 };
 
+// 🌟 [수정 사항 3 - 입력창 포커스 모바일 최적화 핸들러]
+// 가상 키보드가 솟구칠 때 브라우저 뷰포트 크기 오인 현상을 방어하기 위해 지연 스크롤 보정을 실행합니다.
+const handleInputFocus = () => {
+  if (isMobile.value) {
+    setTimeout(() => {
+      // 윈도우 스크롤을 현재 시각 뷰포트 최하단으로 끌어올림
+      window.scrollTo(0, document.body.scrollHeight);
+      scrollToBottom();
+    }, 250); // 키보드 업로드 애니메이션 프레임 타임 확보
+  }
+};
+
 onMounted(() => {
   checkMobile();
   window.addEventListener('resize', checkMobile);
@@ -110,6 +140,9 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
+  // 컴포넌트 이탈 시 혹시 남아있을 스크롤 락 해제
+  document.body.style.overflow = '';
+  document.body.style.touchAction = '';
 });
 
 const getCurrentTime = () => {
@@ -122,27 +155,20 @@ const getCurrentTime = () => {
   return `${ampm} ${hours}:${minutes}`;
 };
 
-// ⭐ [6번 API] 챗봇 질문 전송 실시간 연동 (POST /api/chat)
 const sendMessage = async () => {
   if (!inputMessage.value.trim() || isLoading.value) return;
 
   const userText = inputMessage.value;
   inputMessage.value = '';
 
-  // 1. 사용자 말풍선 UI 추가
   messages.value.push({
     sender: 'user',
     text: userText,
     time: getCurrentTime()
   });
 
-  // 2. 사용자가 보낸 말풍선이 렌더링된 후 1차 스크롤 하단 이동
   await scrollToBottom();
-
-  // 🌟 3. 챗봇 응답 대기 상태 활성화 (`isLoading = true`)
   isLoading.value = true;
-  
-  // 🌟 4. 대기 말풍선(v-if="isLoading")이 DOM에 그려진 '직후' 완전히 밑으로 내려가 보이도록 2차 스크롤 하단 이동 보장
   await scrollToBottom();
 
   try {
@@ -172,7 +198,6 @@ const sendMessage = async () => {
       references = response.data.references || [];
     }
 
-    // 5. 어시스턴트 실제 답변 추가
     messages.value.push({
       sender: 'assistant',
       text: answerText,
@@ -196,7 +221,6 @@ const sendMessage = async () => {
       time: getCurrentTime()
     });
   } finally {
-    // 로딩 비활성화 및 최종 스크롤 하단 정렬
     isLoading.value = false;
     await scrollToBottom();
   }
@@ -251,13 +275,17 @@ const handleReferenceClick = (refItem) => {
   border: 1px solid #e9ecef;
 }
 
+/* 🌟 [수정 사항 1 - 모바일 하단 가려짐 및 100vh 깨짐 완전 방어] */
 .chat-window.is-mobile-fullscreen {
   position: fixed;
   top: 0;
   left: 0;
-  width: 100vw;
-  height: 100vh;
+  width: 100vw !important;
+  /* 일반 vh가 아닌 주소창 유무에 대응하는 모바일 신규 단위 dvh(Dynamic Viewport Height) 전격 배치 */
+  height: 100dvh !important; 
+  max-height: 100dvh !important;
   border-radius: 0;
+  z-index: 2100; /* 헤더 햄버거 오버레이보다 최상단 배치 보장 */
 }
 
 .chat-header {
@@ -267,6 +295,7 @@ const handleReferenceClick = (refItem) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0; /* 헤더 영역 높이 축소 방지 고정 */
 }
 .header-title {
   display: flex;
@@ -293,6 +322,8 @@ const handleReferenceClick = (refItem) => {
   flex-grow: 1;
   padding: 15px;
   overflow-y: auto;
+  /* 🌟 모바일에서 뒷배경이 아닌 챗봇 메시지창 내부 바운스 스크롤이 확실하게 동작하도록 유도 */
+  -webkit-overflow-scrolling: touch; 
   background-color: #f8f9fa;
   display: flex;
   flex-direction: column;
@@ -331,13 +362,12 @@ const handleReferenceClick = (refItem) => {
   box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
 
-/* 🌟 1. 대화 상자 텍스트 왼쪽 정렬 고정 */
 .message-text {
   font-size: 14px;
   line-height: 1.45;
   margin: 0;
   white-space: pre-line;
-  text-align: left; /* 👈 사용자와 어시스턴트 글 배치 방향 모두 좌측 정렬 */
+  text-align: left; 
 }
 
 .message-time {
@@ -397,6 +427,9 @@ const handleReferenceClick = (refItem) => {
   border-top: 1px solid #e9ecef;
   padding: 10px;
   background-color: white;
+  flex-shrink: 0; /* 🌟 가상 키보드가 뜰 때 입력폼 크기가 일그러지는 현상 전면 차단 */
+  /* iOS 단말기 하단 세이프 에어리어(홈 바 영역) 여백 준수 방어막 형성 */
+  padding-bottom: calc(10px + env(safe-area-inset-bottom)); 
 }
 .chat-input {
   flex-grow: 1;
@@ -405,6 +438,8 @@ const handleReferenceClick = (refItem) => {
   padding: 8px 12px;
   font-size: 14px;
   outline: none;
+  background-color: #ffffff;
+  -webkit-appearance: none; /* 아이폰 입력창 내부 옅은 내부 그림자 버그 제거 */
 }
 .chat-input:focus {
   border-color: #007bff;
