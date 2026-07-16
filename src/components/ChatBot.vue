@@ -70,7 +70,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'; // 🌟 watch 추가
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import api from '@/api/index.js';
 
@@ -92,11 +92,9 @@ const messages = ref([
 ]);
 
 const checkMobile = () => {
-  isMobile.value = window.innerWidth <= 768; // 🌟 모바일 해상도 감지 기준을 768px 헤더 스펙과 통일화 보정
+  isMobile.value = window.innerWidth <= 768;
 };
 
-// 🌟 [수정 사항 2 - Body Scroll Lock 구현]
-// 모바일 화면에서 챗봇 창이 열리면 뒷페이지 본문 스크롤을 강제 비활성화하여 레이아웃 흔들림을 원천 제거합니다.
 watch([isOpen, isMobile], ([open, mobile]) => {
   if (open && mobile) {
     document.body.style.overflow = 'hidden';
@@ -121,15 +119,12 @@ const scrollToBottom = async () => {
   }
 };
 
-// 🌟 [수정 사항 3 - 입력창 포커스 모바일 최적화 핸들러]
-// 가상 키보드가 솟구칠 때 브라우저 뷰포트 크기 오인 현상을 방어하기 위해 지연 스크롤 보정을 실행합니다.
 const handleInputFocus = () => {
   if (isMobile.value) {
     setTimeout(() => {
-      // 윈도우 스크롤을 현재 시각 뷰포트 최하단으로 끌어올림
       window.scrollTo(0, document.body.scrollHeight);
       scrollToBottom();
-    }, 250); // 키보드 업로드 애니메이션 프레임 타임 확보
+    }, 250);
   }
 };
 
@@ -140,7 +135,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('resize', checkMobile);
-  // 컴포넌트 이탈 시 혹시 남아있을 스크롤 락 해제
   document.body.style.overflow = '';
   document.body.style.touchAction = '';
 });
@@ -275,17 +269,15 @@ const handleReferenceClick = (refItem) => {
   border: 1px solid #e9ecef;
 }
 
-/* 🌟 [수정 사항 1 - 모바일 하단 가려짐 및 100vh 깨짐 완전 방어] */
 .chat-window.is-mobile-fullscreen {
   position: fixed;
   top: 0;
   left: 0;
   width: 100vw !important;
-  /* 일반 vh가 아닌 주소창 유무에 대응하는 모바일 신규 단위 dvh(Dynamic Viewport Height) 전격 배치 */
   height: 100dvh !important; 
   max-height: 100dvh !important;
   border-radius: 0;
-  z-index: 2100; /* 헤더 햄버거 오버레이보다 최상단 배치 보장 */
+  z-index: 2100;
 }
 
 .chat-header {
@@ -295,7 +287,7 @@ const handleReferenceClick = (refItem) => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-shrink: 0; /* 헤더 영역 높이 축소 방지 고정 */
+  flex-shrink: 0;
 }
 .header-title {
   display: flex;
@@ -322,7 +314,6 @@ const handleReferenceClick = (refItem) => {
   flex-grow: 1;
   padding: 15px;
   overflow-y: auto;
-  /* 🌟 모바일에서 뒷배경이 아닌 챗봇 메시지창 내부 바운스 스크롤이 확실하게 동작하도록 유도 */
   -webkit-overflow-scrolling: touch; 
   background-color: #f8f9fa;
   display: flex;
@@ -427,10 +418,11 @@ const handleReferenceClick = (refItem) => {
   border-top: 1px solid #e9ecef;
   padding: 10px;
   background-color: white;
-  flex-shrink: 0; /* 🌟 가상 키보드가 뜰 때 입력폼 크기가 일그러지는 현상 전면 차단 */
-  /* iOS 단말기 하단 세이프 에어리어(홈 바 영역) 여백 준수 방어막 형성 */
+  flex-shrink: 0; 
   padding-bottom: calc(10px + env(safe-area-inset-bottom)); 
 }
+
+/* 🌟 [테마 색상 고정 조치] 모바일 다크모드 인버전 현상 전면 방어 및 고정 스타일 정의 */
 .chat-input {
   flex-grow: 1;
   border: 1px solid #ced4da;
@@ -438,12 +430,23 @@ const handleReferenceClick = (refItem) => {
   padding: 8px 12px;
   font-size: 14px;
   outline: none;
-  background-color: #ffffff;
-  -webkit-appearance: none; /* 아이폰 입력창 내부 옅은 내부 그림자 버그 제거 */
+  
+  /* 다크모드 미디어 쿼리를 무시하고 고정 값을 갖도록 강제 선언 추가 */
+  background-color: #ffffff !important;
+  color: #212529 !important;
+  
+  /* 인풋창 내부 입력 텍스트 포커스 시점에도 고정 명시 */
+  caret-color: #007bff; 
+  
+  -webkit-appearance: none; 
 }
-.chat-input:focus {
-  border-color: #007bff;
+
+/* 🌟 iOS Safari 등의 다크모드 텍스트 쉴드 컬러링 제거 플레이스홀더 설정 */
+.chat-input::placeholder {
+  color: #adb5bd !important;
+  opacity: 1; /* iOS 가시성 투명도 초기화 */
 }
+
 .send-btn {
   background-color: #007bff;
   color: white;
