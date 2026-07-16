@@ -13,9 +13,9 @@
     </div>
 
     <div v-else class="form-container">
-      <h1 class="form-title">
+      <h2 class="form-title">
         {{ isEditMode ? '게시글 수정' : '게시글 작성' }}
-      </h1>
+      </h2>
 
       <form @submit.prevent="handleSubmit" class="write-form">
         <div class="form-group">
@@ -23,8 +23,8 @@
           <select id="category" v-model="formData.category" class="form-select" required>
             <option value="" disabled>카테고리를 선택하세요</option>
             <option value="관광지">관광지</option>
-            <option value="맛집">맛집</option>
-            <option value="축제·행사">축제·행사</option>
+            <option value="음식점">음식점</option>
+            <option value="축제공연행사">축제공연행사</option>
           </select>
         </div>
 
@@ -104,12 +104,32 @@
 
         <div class="form-actions">
           <button type="button" class="btn btn-cancel" @click="goBack" :disabled="isSubmitting">취소</button>
-          <button v-if="isEditMode" type="button" class="btn btn-delete" @click="handleDelete" :disabled="isSubmitting">삭제</button>
+          <button v-if="isEditMode" type="button" class="btn btn-delete" @click="openDeleteConfirm" :disabled="isSubmitting">삭제</button>
           <button type="submit" class="btn btn-submit" :disabled="isSubmitting">
             {{ isSubmitting ? '저장 중...' : (isEditMode ? '수정완료' : '등록하기') }}
           </button>
         </div>
       </form>
+    </div>
+
+    <div v-if="isDeleteConfirmOpen" class="modal-overlay" @click="closeDeleteConfirm">
+      <div class="modal-window" @click.stop>
+        <div class="modal-header delete-modal-header">
+          <h3>게시글 삭제 확인</h3>
+          <button @click="closeDeleteConfirm" class="close-x-btn">✕</button>
+        </div>
+        <div class="modal-body confirm-modal-body">
+          <span class="warning-icon">⚠️</span>
+          <p class="confirm-message">정말로 이 게시글을 삭제하시겠습니까?</p>
+          <p class="confirm-sub-message">삭제된 데이터는 복구할 수 없습니다.</p>
+        </div>
+        <div class="modal-footer">
+          <button @click="executeDelete" class="modal-delete-action-btn" :disabled="isSubmitting">
+            {{ isSubmitting ? '삭제 중...' : '네, 삭제합니다' }}
+          </button>
+          <button @click="closeDeleteConfirm" class="modal-cancel-btn" :disabled="isSubmitting">취소</button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -117,7 +137,7 @@
 <script setup>
 import { ref, reactive, computed, onMounted } from 'vue';
 import { useRoute, useRouter, RouterLink } from 'vue-router';
-import { toast } from 'vue3-toastify'; // 🌟 vue3-toastify 모듈 임포트
+import { toast } from 'vue3-toastify';
 import api from '@/api/index.js';
 
 const route = useRoute();
@@ -131,6 +151,9 @@ const postId = ref(null);
 const tagInput = ref('');
 const imagePreview = ref('');
 const selectedFile = ref(null);
+
+// 🌟 커스텀 삭제 팝업 제어 상태 변수
+const isDeleteConfirmOpen = ref(false);
 
 const formData = reactive({
   category: '',
@@ -181,7 +204,6 @@ const fetchPostDetail = async () => {
     }
   } catch (err) {
     console.error('게시글 세부 정보 로드 실패:', err);
-    // 🌟 alert 대체: toast.error 사용
     toast.error(err.response?.data?.message || '게시글을 불러오는 데 실패했습니다.');
     router.push('/board');
   } finally {
@@ -237,8 +259,7 @@ const handleSubmit = async () => {
       };
 
       await api.put(`/api/posts/${postId.value}`, updateData);
-      // 🌟 alert 대체: toast.success 사용
-      toast.success('게시글이 수정되었습니다.');
+      toast.success('게시글이 성공적으로 수정되었습니다.');
       router.push(`/board/${postId.value}`);
     } else {
       const submitData = new FormData();
@@ -257,8 +278,7 @@ const handleSubmit = async () => {
       const response = await api.post('/api/posts', submitData, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
-      // 🌟 alert 대체: toast.success 사용
-      toast.success('게시글이 등록되었습니다.');
+      toast.success('게시글이 성공적으로 등록되었습니다.');
       
       const newPostId = response.data?.id;
       if (newPostId) {
@@ -269,25 +289,27 @@ const handleSubmit = async () => {
     }
   } catch (err) {
     console.error('게시글 저장 실패:', err);
-    // 🌟 alert 대체: toast.error 사용
     toast.error(err.response?.data?.message || '게시글 저장 중 오류가 발생했습니다.');
   } finally {
     isSubmitting.value = false;
   }
 };
 
-const handleDelete = async () => {
+// 🌟 삭제 버튼 클릭 시 검증 후 커스텀 모달 오픈
+const openDeleteConfirm = () => {
   if (!formData.password) {
-    // 🌟 alert 대체: 중요 입력 누락은 toast.warning 사용
     toast.warning('게시글 삭제를 위해 비밀번호를 입력해주세요.');
     return;
   }
+  isDeleteConfirmOpen.value = true;
+};
 
-  // 브라우저 확인창 confirm은 본래 목적에 맞게 유지
-  if (!confirm('정말로 이 게시글을 삭제하시겠습니까?')) {
-    return;
-  }
+const closeDeleteConfirm = () => {
+  isDeleteConfirmOpen.value = false;
+};
 
+// 🌟 커스텀 모달에서 최종 승인 버튼을 눌렀을 때 실행되는 API 통신 함수
+const executeDelete = async () => {
   try {
     isSubmitting.value = true;
 
@@ -295,17 +317,18 @@ const handleDelete = async () => {
       data: { password: formData.password }
     });
 
-    // 🌟 alert 대체: toast.success 사용
     toast.success('게시글이 삭제되었습니다.');
+    closeDeleteConfirm();
     router.push('/board');
   } catch (err) {
     console.error('게시글 삭제 실패:', err);
-    // 🌟 alert 대체: toast.error 사용
     toast.error(err.response?.data?.message || '삭제에 실패했습니다. 비밀번호를 확인해주세요.');
   } finally {
     isSubmitting.value = false;
   }
 };
+
+// 기존의 handleDelete 메소드는 제거하고 위의 함수 체인으로 이관 완료
 
 const goBack = () => {
   if (isEditMode.value) {
@@ -510,5 +533,89 @@ const goBack = () => {
   padding: 50px;
   color: #6c757d;
   font-size: 15px;
+}
+
+/* 🌟 [공통 모달 구조 및 디자인] 레이어 스타일 정의 */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex; justify-content: center; align-items: center;
+  z-index: 2000;
+}
+.modal-window {
+  background-color: white;
+  border-radius: 8px;
+  width: 90%;
+  max-width: 400px;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+.modal-header {
+  background-color: #f8f9fa;
+  padding: 15px 20px;
+  border-bottom: 1px solid #dee2e6;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.delete-modal-header h3 {
+  font-size: 16px;
+  font-weight: bold;
+  color: #dc3545; /* 경고 헤더 컬러 지정 */
+  margin: 0;
+}
+.close-x-btn { background: none; border: none; font-size: 16px; cursor: pointer; color: #868e96; }
+.close-x-btn:hover { color: #212529; }
+
+.modal-body {
+  padding: 20px;
+  display: flex; flex-direction: column; gap: 12px;
+}
+.confirm-modal-body {
+  align-items: center;
+  text-align: center;
+  padding: 30px 20px;
+}
+.warning-icon {
+  font-size: 40px;
+  margin-bottom: 10px;
+}
+.confirm-message {
+  font-size: 16px;
+  font-weight: bold;
+  color: #212529;
+  margin: 0;
+}
+.confirm-sub-message {
+  font-size: 13px;
+  color: #6c757d;
+  margin: 0;
+}
+
+.modal-footer {
+  padding: 12px 20px; background-color: #f8f9fa; border-top: 1px solid #dee2e6;
+  display: flex; justify-content: flex-end; gap: 8px;
+}
+.modal-cancel-btn {
+  padding: 8px 16px; background-color: #e9ecef; color: #495057; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;
+}
+.modal-cancel-btn:hover { background-color: #dee2e6; }
+
+/* 커스텀 팝업 전용 강렬한 레드 액션 버튼 스타일 */
+.modal-delete-action-btn {
+  padding: 8px 16px;
+  background-color: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: background-color 0.15s;
+}
+.modal-delete-action-btn:hover {
+  background-color: #bd2130;
+}
+.modal-delete-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 </style>

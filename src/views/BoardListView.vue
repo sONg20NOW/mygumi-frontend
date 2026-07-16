@@ -111,16 +111,17 @@
 <script setup>
 import { ref, onMounted, watch } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
-import api from '@/api/index.js'; // ⭕ axios 대신 공통 api 인스턴스 사용
+import api from '@/api/index.js';
 
 const router = useRouter();
 const route = useRoute();
 
+// 🌟 [카테고리 개편] 명칭 요구사항 일치화 수정 완료
 const categories = [
   { label: '전체', value: 'ALL' },
   { label: '관광지', value: '관광지' },
-  { label: '맛집', value: '맛집' },
-  { label: '축제·행사', value: '축제·행사' }
+  { label: '음식점', value: '음식점' },
+  { label: '축제공연행사', value: '축제공연행사' }
 ];
 
 const posts = ref([]);
@@ -135,7 +136,6 @@ const searchQuery = ref(route.query.keyword || '');
 
 const bookmarkedIds = ref(JSON.parse(localStorage.getItem('bookmarked_posts') || '[]'));
 
-// 🌟 [수정 완료] 리스트 내 각 게시글의 thumbnailUrl을 환경 변수 주소와 조합하는 헬퍼 함수 구현
 const getFullImageUrl = (urlPath) => {
   if (!urlPath) return '';
   if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
@@ -227,11 +227,12 @@ const goToDetail = (id) => {
   router.push(`/board/${id}`);
 };
 
+// 🌟 [카테고리 개편] 클래스 매핑 조건 키 매칭 동기화 수정 완료
 const getCategoryClass = (categoryName) => {
   switch (categoryName) {
     case '관광지': return 'tour';
-    case '맛집': return 'restaurant';
-    case '축제·행사': return 'festival';
+    case '음식점': return 'restaurant';
+    case '축제공연행사': return 'festival';
     default: return 'default';
   }
 };
@@ -429,7 +430,6 @@ const toggleBookmark = (id) => {
   font-size: 14px;
 }
 
-/* 🌟 [수정 완료] 목록형 미니 썸네일 이미지 레이아웃 스타일 구조화 */
 .thumbnail-wrapper {
   width: 32px;
   height: 32px;

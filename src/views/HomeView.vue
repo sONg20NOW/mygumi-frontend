@@ -22,14 +22,14 @@
           <h3>관광지</h3>
           <p>금오산, 벼랑길 등 추천 명소</p>
         </button>
-        <button @click="navigateToCategory('맛집')" class="category-card">
+        <button @click="navigateToCategory('음식점')" class="category-card">
           <span class="icon">🍕</span>
-          <h3>맛집</h3>
+          <h3>음식점</h3>
           <p>지역 주민 인증 로컬 맛집</p>
         </button>
-        <button @click="navigateToCategory('축제·행사')" class="category-card">
+        <button @click="navigateToCategory('축제공연행사')" class="category-card">
           <span class="icon">🎉</span>
-          <h3>축제·행사</h3>
+          <h3>축제공연행사</h3>
           <p>이번 달에 열리는 다양한 축제</p>
         </button>
       </div>
@@ -90,14 +90,13 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRouter, RouterLink } from 'vue-router';
-import api from '@/api/index.js'; //
-const router = useRouter(); //
+import api from '@/api/index.js'; 
+const router = useRouter(); 
 
-const posts = ref([]); //
-const isLoading = ref(true); //
-const error = ref(null); //
+const posts = ref([]); 
+const isLoading = ref(true); 
+const error = ref(null); 
 
-// 🌟 [수정 완료] 썸네일 이미지 주소를 VITE_API_URL 환경 변수와 조합해 주는 풀 경로 파싱 헬퍼 함수 적용
 const getFullImageUrl = (urlPath) => {
   if (!urlPath) return '';
   if (urlPath.startsWith('http://') || urlPath.startsWith('https://')) {
@@ -109,11 +108,10 @@ const getFullImageUrl = (urlPath) => {
   return `${cleanBase}${cleanPath}`;
 };
 
-// 최근 게시글 5개 고정 페치
 const fetchRecentPosts = async () => {
   try {
-    isLoading.value = true; //
-    error.value = null; //
+    isLoading.value = true; 
+    error.value = null; 
     
     const response = await api.get('/api/posts', {
       params: {
@@ -123,30 +121,30 @@ const fetchRecentPosts = async () => {
     });
 
     if (response.data && response.data.items) {
-      posts.value = response.data.items; //
+      posts.value = response.data.items; 
     }
   } catch (err) {
-    console.error('게시글 목록 로드 실패:', err); //
-    error.value = err.response?.data?.message || '게시글을 불러오는데 실패했습니다.'; //
+    console.error('게시글 목록 로드 실패:', err); 
+    error.value = err.response?.data?.message || '게시글을 불러오는데 실패했습니다.'; 
   } finally {
-    isLoading.value = false; //
+    isLoading.value = false; 
   }
 };
 
 onMounted(() => {
-  fetchRecentPosts(); //
+  fetchRecentPosts(); 
 });
 
+// 🌟 [색상 통일 개편] 신규 규격 명칭 매핑 동기화
 const getCategoryClass = (categoryName) => {
   switch (categoryName) {
-    case '관광지': return 'tour'; //
-    case '맛집': return 'restaurant'; //
-    case '축제·행사': return 'festival'; //
-    default: return 'default'; //
+    case '관광지': return 'tour'; 
+    case '음식점': return 'restaurant'; 
+    case '축제공연행사': return 'festival'; 
+    default: return 'default'; 
   }
 };
 
-// 날짜 규격을 BoardListView와 통일성 있게 YYYY-MM-DD 형태로 포맷팅 변경
 const formatDate = (dateStr) => {
   if (!dateStr) return '';
   const date = new Date(dateStr);
@@ -157,11 +155,11 @@ const formatDate = (dateStr) => {
 };
 
 const navigateToCategory = (categoryName) => {
-  router.push({ path: '/board', query: { category: categoryName } }); //
+  router.push({ path: '/board', query: { category: categoryName } }); 
 };
 
 const goToDetail = (id) => {
-  router.push(`/board/${id}`); //
+  router.push(`/board/${id}`); 
 };
 </script>
 
@@ -345,7 +343,6 @@ const goToDetail = (id) => {
   background-color: #f8f9fa;
 }
 
-/* 🌟 [스타일 수정 완료] BoardListView 스펙에 맞춤 정렬 너비 배정 */
 .th-cat { width: 15%; }
 .th-title { width: 55%; }
 .th-views { width: 10%; text-align: center; }
@@ -371,7 +368,6 @@ const goToDetail = (id) => {
   vertical-align: middle;
 }
 
-/* 🌟 [스타일 수정 완료] 제목 영역 플렉스 컨테이너 구성 */
 .title-container {
   display: flex;
   align-items: center;
@@ -390,7 +386,6 @@ const goToDetail = (id) => {
   font-size: 14px;
 }
 
-/* 🌟 미니 썸네일 사각형 프레임 레이아웃 */
 .thumbnail-wrapper {
   width: 32px;
   height: 32px;
@@ -408,7 +403,6 @@ const goToDetail = (id) => {
   object-fit: cover;
 }
 
-/* 🌟 인라인 태그 뱃지 스타일 */
 .tag-list-inline {
   display: flex;
   gap: 4px;
@@ -439,6 +433,7 @@ const goToDetail = (id) => {
   font-weight: 600;
   text-align: center;
 }
+/* 🌟 [색상 통일 개편] BoardListView 스타일 시트와 색상 코드 매핑 완전 동기화 */
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.festival { background-color: #f3e5f5; color: #4a148c; }

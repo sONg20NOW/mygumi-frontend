@@ -86,7 +86,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useRouter, useRoute, RouterLink } from 'vue-router';
-import { toast } from 'vue3-toastify'; // 🌟 vue3-toastify 라이브러리 임포트
+import { toast } from 'vue3-toastify'; 
 import api from '@/api/index.js';
 
 const router = useRouter();
@@ -172,7 +172,6 @@ const createFloatingHeart = (buttonEl) => {
   }
 };
 
-// [9번 API] 게시글 좋아요 증가
 const handleLike = async () => {
   if (!post.value) return;
 
@@ -191,7 +190,6 @@ const handleLike = async () => {
     }
   } catch (err) {
     console.error('좋아요 반영 실패:', err);
-    // 🌟 alert 대체: toast.error 사용
     toast.error('좋아요 처리에 실패했습니다.');
   }
 };
@@ -232,7 +230,6 @@ const submitPassword = async () => {
         data: { password: inputPassword.value }
       });
 
-      // 🌟 alert 대체: toast.success 사용
       toast.success('게시글이 삭제되었습니다.');
       closeModal();
       goToList();
@@ -249,11 +246,12 @@ const submitPassword = async () => {
   }
 };
 
+// 🌟 [색상 통일 개편] 신규 규격 카테고리 명칭 매핑 동기화
 const getCategoryClass = (categoryName) => {
   switch (categoryName) {
     case '관광지': return 'tour';
-    case '맛집': return 'restaurant';
-    case '축제·행사': return 'festival';
+    case '음식점': return 'restaurant';
+    case '축제공연행사': return 'festival';
     default: return 'default';
   }
 };
@@ -466,11 +464,12 @@ const formatDate = (dateStr) => {
 
 .badge {
   display: inline-block;
-  padding: 0px 8px;
+  padding: 4px 8px; /* 패딩 값 통일 보정 */
   border-radius: 4px;
   font-size: 12px;
   font-weight: bold;
 }
+/* 🌟 [색상 통일 개편] BoardListView 스타일 시트와 통일 완료 */
 .badge.tour { background-color: #e3f2fd; color: #0d47a1; }
 .badge.restaurant { background-color: #fff3e0; color: #e65100; }
 .badge.festival { background-color: #f3e5f5; color: #4a148c; }
